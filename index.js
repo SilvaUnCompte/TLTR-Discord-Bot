@@ -1,65 +1,21 @@
-const { Client, GatewayIntentBits, Collection, SlashCommandBuilder, REST, Routes } = require('discord.js');
+const { Client, GatewayIntentBits, Collection } = require('discord.js');
+const commands = require('./command-list').commands;
 const dotenv = require('dotenv');
 
 // Load environment variables
 dotenv.config();
 
 // Create a new client instance
-const client = new Client({ 
+const client = new Client({
     intents: [
         GatewayIntentBits.Guilds,
         GatewayIntentBits.GuildMessages,
         GatewayIntentBits.MessageContent
-    ] 
+    ]
 });
 
 // Create a collection to store commands
 client.commands = new Collection();
-
-// Define slash commands
-const commands = [
-    {
-        data: new SlashCommandBuilder()
-            .setName('echo')
-            .setDescription('Replies with your input!')
-            .addStringOption(option =>
-                option.setName('message')
-                    .setDescription('The message to echo back')
-                    .setRequired(true)
-            ),
-        async execute(interaction) {
-            const message = interaction.options.getString('message');
-            await interaction.reply(`You said: ${message}`);
-        }
-    },
-    {
-        data: new SlashCommandBuilder()
-            .setName('ping')
-            .setDescription('Replies with Pong!'),
-        async execute(interaction) {
-            const sent = await interaction.reply({ content: 'Pinging...', fetchReply: true });
-            const latency = sent.createdTimestamp - interaction.createdTimestamp;
-            await interaction.editReply(`🏓 Pong! Latency is ${latency}ms. API Latency is ${Math.round(client.ws.ping)}ms`);
-        }
-    },
-    {
-        data: new SlashCommandBuilder()
-            .setName('say')
-            .setDescription('Make the bot say something')
-            .addStringOption(option =>
-                option.setName('text')
-                    .setDescription('What should the bot say?')
-                    .setRequired(true)
-            ),
-        async execute(interaction) {
-            const text = interaction.options.getString('text');
-            await interaction.reply({
-                content: text,
-                allowedMentions: { parse: [] } // Prevent mentions for security
-            });
-        }
-    }
-];
 
 // Store commands in the collection
 commands.forEach(command => {
@@ -67,7 +23,7 @@ commands.forEach(command => {
 });
 
 // When the client is ready, run this code (only once)
-client.once('ready', () => {
+client.once('clientReady', () => {
     console.log(`✅ Ready! Logged in as ${client.user.tag}`);
     console.log(`🤖 Bot is in ${client.guilds.cache.size} servers`);
 });
@@ -85,12 +41,12 @@ client.on('interactionCreate', async interaction => {
 
     try {
         await command.execute(interaction);
-        console.log(`✅ ${interaction.user.tag} executed /${interaction.commandName}`);
+        console.log(`> ${interaction.user.tag} executed /${interaction.commandName}`);
     } catch (error) {
         console.error('Error executing command:', error);
-        
+
         const errorMessage = 'There was an error while executing this command!';
-        
+
         if (interaction.replied || interaction.deferred) {
             await interaction.followUp({ content: errorMessage, ephemeral: true });
         } else {
