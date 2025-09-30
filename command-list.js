@@ -41,6 +41,17 @@ const commands = [
                 allowedMentions: { parse: [] } // Prevent mentions for security
             });
         }
+    },
+    {
+        data: new SlashCommandBuilder()
+            .setName('tltr')
+            .setDescription('Too Long; Too Read - Summarize or conversation with AI')
+            .addStringOption(option =>
+                option.setName('limit')
+                    .setDescription('Number of messages to consider (default 25, max 100)')
+                    .setRequired(false)
+            ),
+        async execute(interaction) { await require('./commands/tltr').tltr(interaction); }
     }
 ];
 
