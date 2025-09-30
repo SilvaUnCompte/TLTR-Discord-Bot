@@ -10,7 +10,8 @@ const client = new Client({
     intents: [
         GatewayIntentBits.Guilds,
         GatewayIntentBits.GuildMessages,
-        GatewayIntentBits.MessageContent
+        GatewayIntentBits.MessageContent,
+        GatewayIntentBits.GuildVoiceStates,
     ]
 });
 
@@ -26,6 +27,10 @@ commands.forEach(command => {
 client.once('clientReady', () => {
     console.log(`✅ Ready! Logged in as ${client.user.tag}`);
     console.log(`🤖 Bot is in ${client.guilds.cache.size} servers`);
+    console.log('📝 Guilds:');
+    client.guilds.cache.forEach(guild => {
+        console.log(`- ${guild.name} (ID: ${guild.id})`);
+    });
 });
 
 // Listen for slash command interactions
