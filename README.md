@@ -1,21 +1,27 @@
-# TLTD-Discord-Bot
+# TLTR-Discord-Bot
 
-A Discord bot template with slash commands that can echo and respond to user input.
+Playground to learn building Discord bots using Discord.js v14 with modern slash commands.
 
-## Features
+[![Discord](https://img.shields.io/discord/123456789012345678?label=Join%20the%20Server&logo=discord&style=flat-square)](https://discord.gg/bSXzMrSyd5)
+[![GitHub stars](https://img.shields.io/github/stars/SilvaUnCompte/TLTR-Discord-Bot?style=social)](https://github.com/SilvaUnCompte/TLTR-Discord-Bot)
 
-- ✅ Slash command support
-- 🔄 Echo command - responds with user input
-- 🏓 Ping command - shows bot latency
-- 💬 Say command - makes the bot say custom text
-- 🛡️ Error handling and security features
-- 📝 Easy configuration with environment variables
+## 🚀 Features
 
-## Commands
+- ✅ **Modern Slash Command Support** - Full Discord v14 compatibility
+- 🔄 **Echo Command** - Responds with user input for testing
+- 🏓 **Ping Command** - Shows bot and API latency monitoring
+- 💬 **Say Command** - Makes the bot send custom messages safely
+- 📁 **Modular Architecture** - Organized command structure for scalability
+- 📝 **Environment Configuration** - Easy setup with `.env` files
+- 🔧 **Developer Tools** - Automated command deployment scripts
 
-- `/echo <message>` - The bot will reply with "You said: [your message]"
-- `/ping` - Shows bot and API latency
-- `/say <text>` - Makes the bot say the specified text
+## 🎯 Available Commands
+
+| Command | Description | Usage Example |
+|---------|-------------|---------------|
+| `/echo <message>` | Echoes back your message | `/echo Hello World!` → "You said: Hello World!" |
+| `/ping` | Shows bot and API latency | `/ping` → "🏓 Pong! Latency is 45ms. API Latency is 67ms" |
+| `/say <text>` | Makes the bot send a message | `/say Welcome!` → "Welcome!" |
 
 ## Setup Instructions
 
@@ -83,40 +89,80 @@ npm run deploy-commands
 npm start
 ```
 
-## Usage Examples
+## 💡 Usage Examples
 
-Once the bot is running and commands are deployed:
+Once the bot is running and commands are deployed, you can use these commands in any channel where the bot has permissions:
 
-1. **Echo Command**: 
-   - Type `/echo Hello World!`
-   - Bot responds: "You said: Hello World!"
+### 🔄 Echo Command
+```
+/echo message: Hello World!
+```
+**Bot Response:** `You said: Hello World!`
 
-2. **Ping Command**:
-   - Type `/ping`
-   - Bot responds with latency information
+### 🏓 Ping Command
+```
+/ping
+```
+**Bot Response:** `🏓 Pong! Latency is 45ms. API Latency is 67ms`
 
-3. **Say Command**:
-   - Type `/say Welcome to our server!`
-   - Bot responds: "Welcome to our server!"
+### 💬 Say Command
+```
+/say text: Welcome to our awesome server!
+```
+**Bot Response:** `Welcome to our awesome server!`
+
+> 🛡️ **Security Note:** The say command includes mention protection to prevent abuse
 
 ## Development
 
-### Adding New Commands
+### 🔧 Adding New Commands
 
-1. Add the command definition to both `index.js` and `deploy-commands.js`
-2. Redeploy commands: `npm run deploy-commands`
-3. Restart the bot: `npm start`
+The bot uses a centralized command system for easy management:
 
-### File Structure
+1. **Add to `command-list.js`:**
+   ```javascript
+   {
+       data: new SlashCommandBuilder()
+           .setName('yourcommand')
+           .setDescription('Your command description'),
+       async execute(interaction) {
+           await interaction.reply('Your response here!');
+       }
+   }
+   ```
+
+2. **Deploy the new command:**
+   ```bash
+   npm run deploy-commands
+   ```
+
+3. **Restart the bot:**
+   ```bash
+   npm start
+   ```
+
+**✨ That's it!** The bot automatically loads commands from `command-list.js`
+
+### 📂 Project Structure
 
 ```
-├── index.js           # Main bot file
-├── deploy-commands.js # Command deployment script
-├── package.json       # Dependencies and scripts
-├── .env.example      # Environment template
-├── .gitignore        # Git ignore rules
-└── README.md         # This file
+TLTR-Discord-Bot/
+├── 📁 commands/          # Individual command modules (future expansion)
+│   └── tltr.js            # Additional command definitions
+├── 📄 index.js           # Main bot application & event handlers
+├── 📄 command-list.js    # Centralized command definitions & logic
+├── 📄 deploy-commands.js # Command deployment & registration script
+├── 📄 package.json       # Dependencies, scripts & project metadata
+├── 📄 .env               # Your bot credentials (not in git)
+└── 📄 README.md          # Project documentation (this file)
 ```
+
+### 🏗️ Architecture Overview
+
+- **`index.js`** - Core bot logic, event handling, and command execution
+- **`command-list.js`** - All commands with their data and execute functions
+- **`deploy-commands.js`** - Automated script to register commands with Discord
+- **`commands/`** - Folder for additional modular commands (extensibility)
 
 ## Security Notes
 
@@ -124,24 +170,66 @@ Once the bot is running and commands are deployed:
 - The bot includes mention protection in the `say` command
 - Error handling prevents crashes from invalid interactions
 
-## Troubleshooting
+## 🐛 Troubleshooting
 
-### Common Issues
+### ❌ Common Issues & Solutions
 
-1. **"Invalid Token"**: Check your `DISCORD_TOKEN` in `.env`
-2. **Commands not appearing**: 
-   - Make sure commands are deployed with `npm run deploy-commands`
-   - Global commands take up to 1 hour to appear
-   - Try using `GUILD_ID` for faster development
-3. **Permission errors**: Ensure bot has proper permissions in your server
+| Problem | Solution |
+|---------|----------|
+| **"Invalid Token"** | ✅ Verify `DISCORD_TOKEN` in your `.env` file |
+| **Commands not appearing** | ✅ Run `npm run deploy-commands`<br>✅ Use `GUILD_ID` for faster dev deployment<br>✅ Global commands take up to 1 hour |
+| **Permission errors** | ✅ Check bot permissions in Discord server<br>✅ Ensure `applications.commands` scope is enabled |
+| **Bot not responding** | ✅ Check console logs for errors<br>✅ Verify bot is online in Discord<br>✅ Restart with `npm start` |
 
-### Support
+### 🆘 Getting Help
 
 If you encounter issues:
-1. Check the console logs for error messages
-2. Verify your `.env` configuration
-3. Ensure your bot has the necessary permissions
+1. **Check Console Logs** - Look for error messages in your terminal
+2. **Verify Configuration** - Double-check your `.env` file setup
+3. **Test Permissions** - Ensure bot has proper Discord server permissions
+4. **Update Dependencies** - Run `npm update` to get latest versions
+5. **Still a problem?** Open an issue on GitHub, I may have missed something!
 
-## License
+### 📋 Quick Debugging Checklist
 
-MIT License - feel free to use this template for your own Discord bots!
+- [ ] Bot token is correct in `.env`
+- [ ] Client ID is set in `.env`
+- [ ] Commands deployed with `npm run deploy-commands`
+- [ ] Bot invited with `applications.commands` scope
+- [ ] Bot has `Send Messages` and `Use Slash Commands` permissions
+
+## 📜 License
+
+**Creative Commons Attribution-NonCommercial-ShareAlike 4.0 International (CC BY-NC-SA 4.0)**
+
+[![License: CC BY-NC-SA 4.0](https://img.shields.io/badge/License-CC%20BY--NC--SA%204.0-lightgrey.svg)](https://creativecommons.org/licenses/by-nc-sa/4.0/)
+
+### 🚫 **Usage Restrictions:**
+- ❌ **No Commercial Use** - You cannot use this code for commercial purposes (or contact me)
+- ✅ **Personal & Educational Use** - Free to use for non-commercial projects
+- ✅ **Modifications Allowed** - You can modify and redistribute under same license
+- ✅ **Attribution Required** - You must give appropriate credit
+
+### 📄 **What This Means:**
+- You can use this bot template for your Discord server
+- You can modify and improve the code
+- You must share modifications under the same license
+- You cannot sell or monetize this code or derivative works
+
+For the full license text, see the [LICENSE](LICENSE) file.
+
+## 🤝 Contributing
+
+Contributions are welcome! Feel free to:
+- 🐛 Report bugs
+- 💡 Suggest new features  
+- 🔧 Submit pull requests
+- 📝 Improve documentation
+
+## ⭐ Show Your Support
+
+If this helped you, consider giving it a star on GitHub!
+
+---
+
+**Happy coding! 🚀** Built with ❤️ using Discord.js v14
