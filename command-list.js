@@ -3,20 +3,6 @@ const { SlashCommandBuilder } = require('discord.js');
 const commands = [
     {
         data: new SlashCommandBuilder()
-            .setName('echo')
-            .setDescription('Replies with your input!')
-            .addStringOption(option =>
-                option.setName('message')
-                    .setDescription('The message to echo back')
-                    .setRequired(true)
-            ),
-        async execute(interaction) {
-            const message = interaction.options.getString('message');
-            await interaction.reply(`You said: ${message}`);
-        }
-    },
-    {
-        data: new SlashCommandBuilder()
             .setName('ping')
             .setDescription('Replies with Pong!'),
         async execute(interaction) {
@@ -45,7 +31,7 @@ const commands = [
     {
         data: new SlashCommandBuilder()
             .setName('tltr')
-            .setDescription('Too Long; Too Read - Summarize or conversation with AI')
+            .setDescription('Too Long; Too Read - Summarize a conversation with AI')
             .addStringOption(option =>
                 option.setName('limit')
                     .setDescription('Number of messages to consider (default 25, max 100)')
