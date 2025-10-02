@@ -10,10 +10,6 @@ Playground to learn building Discord bots using Discord.js v14 with modern slash
 - ✅ **Slash Command Support** - Full Discord v14 compatibility
 - 🤖 **AI-Powered Conversation Summarization** - TLTR with AI integration
 - 🎤 **Voice Channel Integration** - Real-time voice recording and speech-to-text
-- 🔄 **Echo Command** - Responds with user input for testing
-- 🏓 **Ping Command** - Shows bot and API latency monitoring
-- 💬 **Say Command** - Makes the bot send custom messages safely
-- 📁 **Modular Architecture** - Organized command structure for scalability
 - 📝 **Environment Configuration** - Easy setup with `.env` files
 - 🔧 **Developer Tools** - Automated command deployment scripts
 - 🔒 **Message Splitting** - Automatic handling of Discord's 2000-character limit
@@ -23,7 +19,6 @@ Playground to learn building Discord bots using Discord.js v14 with modern slash
 
 | Command | Description | Usage Example |
 |---------|-------------|---------------|
-| `/echo <message>` | Echoes back your message | `/echo Hello World!` → "You said: Hello World!" |
 | `/ping` | Shows bot and API latency | `/ping` → "🏓 Pong! Latency is 45ms. API Latency is 67ms" |
 | `/tltr [messages]` | 🤖 AI-powered conversation summarization | `/tltr 50` → Summarizes last 50 messages with AI |
 | `/copilot` | 🎤 Join voice channel and start voice recording | `/copilot` → Bot joins your voice channel and listens |
