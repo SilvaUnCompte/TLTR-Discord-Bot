@@ -7,13 +7,17 @@ Playground to learn building Discord bots using Discord.js v14 with modern slash
 
 ## 🚀 Features
 
-- ✅ **Modern Slash Command Support** - Full Discord v14 compatibility
+- ✅ **Slash Command Support** - Full Discord v14 compatibility
+- 🤖 **AI-Powered Conversation Summarization** - TLTR with AI integration
+- 🎤 **Voice Channel Integration** - Real-time voice recording and speech-to-text
 - 🔄 **Echo Command** - Responds with user input for testing
 - 🏓 **Ping Command** - Shows bot and API latency monitoring
 - 💬 **Say Command** - Makes the bot send custom messages safely
 - 📁 **Modular Architecture** - Organized command structure for scalability
 - 📝 **Environment Configuration** - Easy setup with `.env` files
 - 🔧 **Developer Tools** - Automated command deployment scripts
+- 🔒 **Message Splitting** - Automatic handling of Discord's 2000-character limit
+- 🛡️ **Audio Security** - Filtering to prevent false voice triggers
 
 ## 🎯 Available Commands
 
@@ -21,7 +25,8 @@ Playground to learn building Discord bots using Discord.js v14 with modern slash
 |---------|-------------|---------------|
 | `/echo <message>` | Echoes back your message | `/echo Hello World!` → "You said: Hello World!" |
 | `/ping` | Shows bot and API latency | `/ping` → "🏓 Pong! Latency is 45ms. API Latency is 67ms" |
-| `/say <text>` | Makes the bot send a message | `/say Welcome!` → "Welcome!" |
+| `/tltr [messages]` | 🤖 AI-powered conversation summarization | `/tltr 50` → Summarizes last 50 messages with AI |
+| `/copilot` | 🎤 Join voice channel and start voice recording | `/copilot` → Bot joins your voice channel and listens |
 
 ## Setup Instructions
 
@@ -53,10 +58,22 @@ Playground to learn building Discord bots using Discord.js v14 with modern slash
 
 4. Edit `.env` file with your bot credentials:
    ```env
+   # Discord Configuration
    DISCORD_TOKEN=your_bot_token_here
    CLIENT_ID=your_client_id_here
    GUILD_ID=your_guild_id_here  # Optional, for faster development
    ```
+
+5. **Set up Google Speech-to-Text** (for voice features):
+   - Go to [Google Cloud Console](https://console.cloud.google.com/)
+   - Enable the Speech-to-Text API
+   - Create a service account and download the JSON credentials
+   - Save as `google-credentials.json` in the project root
+
+6. **Get Groq API Key** (for LLM features):
+   - Visit [Groq Console](https://console.groq.com/)
+   - Create an account and generate an API key
+   - Add it to your `.env` file
 
 ### 3. Invite Bot to Server
 
@@ -93,25 +110,30 @@ npm start
 
 Once the bot is running and commands are deployed, you can use these commands in any channel where the bot has permissions:
 
-### 🔄 Echo Command
-```
-/echo message: Hello World!
-```
-**Bot Response:** `You said: Hello World!`
-
 ### 🏓 Ping Command
 ```
 /ping
 ```
 **Bot Response:** `🏓 Pong! Latency is 45ms. API Latency is 67ms`
 
-### 💬 Say Command
+### 🤖 AI Conversation Summarization
 ```
-/say text: Welcome to our awesome server!
+/tltr 25
 ```
-**Bot Response:** `Welcome to our awesome server!`
+**Bot Response:** AI summary of the last 25 messages with key points and context
 
-> 🛡️ **Security Note:** The say command includes mention protection to prevent abuse
+### 🎤 Voice Channel Integration
+```
+/copilot
+```
+**Bot Actions:**
+1. Joins your current voice channel
+2. Starts listening for speech
+3. Transcribes what you say
+4. Processes speech with AI for intelligent responses
+
+> 🛡️ **Security Notes:** 
+> - Voice recording includes noise filtering and speech detection
 
 ## Development
 
@@ -147,14 +169,23 @@ The bot uses a centralized command system for easy management:
 
 ```
 TLTR-Discord-Bot/
-├── 📁 commands/          # Individual command modules (future expansion)
-│   └── tltr.js            # Additional command definitions
-├── 📄 index.js           # Main bot application & event handlers
-├── 📄 command-list.js    # Centralized command definitions & logic
-├── 📄 deploy-commands.js # Command deployment & registration script
-├── 📄 package.json       # Dependencies, scripts & project metadata
-├── 📄 .env               # Your bot credentials (not in git)
-└── 📄 README.md          # Project documentation (this file)
+├── 📁 API/                     # External API integrations
+│   ├── groq.js                  # Groq AI API integration
+│   └── STT.js                   # Google Speech-to-Text API
+├── 📁 commands/              # Individual command modules
+│   ├── tltr.js              # AI-powered conversation summarization
+│   └── vocal-copilot.js     # Voice channel integration
+├── 📁 utils/                 # Utility modules
+│   ├── audioAnalyzer.js     # Audio processing and validation
+│   ├── googleAuth.js        # Google authentication handling
+│   └── messageHandler.js    # Discord message splitting utilities
+├── 📄 index.js              # Main bot application & event handlers
+├── 📄 command-list.js       # Centralized command definitions & logic
+├── 📄 deploy-commands.js    # Command deployment & registration script
+├── 📄 package.json          # Dependencies, scripts & project metadata
+├── 📄 .env                  # Your bot credentials (not in git)
+├── 📄 google-credentials.json # Google Cloud service account (not in git)
+└── 📄 README.md             # Project documentation (this file)
 ```
 
 ### 🏗️ Architecture Overview
@@ -162,13 +193,24 @@ TLTR-Discord-Bot/
 - **`index.js`** - Core bot logic, event handling, and command execution
 - **`command-list.js`** - All commands with their data and execute functions
 - **`deploy-commands.js`** - Automated script to register commands with Discord
-- **`commands/`** - Folder for additional modular commands (extensibility)
+- **`commands/`** - Modular command implementations
+  - **`tltr.js`** - AI conversation summarization
+  - **`vocal-copilot.js`** - Voice channel integration with real-time STT
+- **`API/`** - External service integrations
+  - **`groq.js`** - Groq AI API client with message formatting
+  - **`STT.js`** - Google Speech-to-Text integration
+- **`utils/`** - Reusable utility modules
+  - **`messageHandler.js`** - Smart Discord message splitting for long content
+  - **`audioAnalyzer.js`** - Advanced audio processing and validation
+  - **`googleAuth.js`** - Google Cloud authentication management
 
 ## Security Notes
 
 - Never commit your `.env` file or bot token
 - The bot includes mention protection in the `say` command
 - Error handling prevents crashes from invalid interactions
+- Voice data is processed in real-time and never permanently stored
+- Google Speech-to-Text uses secure OAuth2 authentication
 
 ## 🐛 Troubleshooting
 
@@ -180,6 +222,10 @@ TLTR-Discord-Bot/
 | **Commands not appearing** | ✅ Run `npm run deploy-commands`<br>✅ Use `GUILD_ID` for faster dev deployment<br>✅ Global commands take up to 1 hour |
 | **Permission errors** | ✅ Check bot permissions in Discord server<br>✅ Ensure `applications.commands` scope is enabled |
 | **Bot not responding** | ✅ Check console logs for errors<br>✅ Verify bot is online in Discord<br>✅ Restart with `npm start` |
+| **AI/TLTR not working** | ✅ Verify `GROQ_API_KEY` is set correctly<br>✅ Check Groq API quota and billing<br>✅ Ensure network connectivity |
+| **Voice recording fails** | ✅ Check `google-credentials.json` exists<br>✅ Verify Google Speech-to-Text API is enabled<br>✅ Ensure bot has voice channel permissions |
+| **"Cannot find module" errors** | ✅ Run `npm install` to install dependencies<br>✅ Check for Node.js version compatibility (16.9.0+)<br>✅ Delete `node_modules` and reinstall if needed |
+| **Audio not being detected** | ✅ Adjust `MIN_VOLUME_THRESHOLD` in `.env`<br>✅ Lower `MIN_SPEECH_DURATION` for shorter speech<br>✅ Check microphone settings and Discord voice activity |
 
 ### 🆘 Getting Help
 
@@ -192,11 +238,25 @@ If you encounter issues:
 
 ### 📋 Quick Debugging Checklist
 
+**Basic Setup:**
 - [ ] Bot token is correct in `.env`
 - [ ] Client ID is set in `.env`
 - [ ] Commands deployed with `npm run deploy-commands`
 - [ ] Bot invited with `applications.commands` scope
 - [ ] Bot has `Send Messages` and `Use Slash Commands` permissions
+
+**LLM Features:**
+- [ ] `GROQ_API_KEY` is set in `.env`
+- [ ] Groq API account has available quota
+- [ ] Network allows connections to Groq API
+
+**Voice Features:**
+- [ ] `google-credentials.json` exists in project root
+- [ ] Google Speech-to-Text API is enabled
+- [ ] Service account has proper permissions
+- [ ] `GOOGLE_APPLICATION_CREDENTIALS` path is correct
+- [ ] Bot has `Connect` and `Speak` voice permissions
+- [ ] Audio security settings are properly configured
 
 ## 📜 License
 
