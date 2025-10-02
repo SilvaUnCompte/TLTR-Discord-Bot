@@ -1,7 +1,5 @@
 # TLTR-Discord-Bot
 
-Playground to learn building Discord bots using Discord.js v14 with modern slash commands.
-
 [![Discord](https://img.shields.io/discord/123456789012345678?label=Join%20the%20Server&logo=discord&style=flat-square)](https://discord.gg/bSXzMrSyd5)
 [![GitHub stars](https://img.shields.io/github/stars/SilvaUnCompte/TLTR-Discord-Bot?style=social)](https://github.com/SilvaUnCompte/TLTR-Discord-Bot)
 
