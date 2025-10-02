@@ -1,4 +1,5 @@
 const { getAuthClient } = require("../utils/googleAuth");
+const { optimizeAudioBuffer } = require("../utils/audioOptimizer");
 const { SAMPLE_RATE } = require("../utils/audioAnalyzer");
 const fetch = require('node-fetch');
 require('dotenv').config();
@@ -7,8 +8,11 @@ const STT_API_URL = "https://speech.googleapis.com/v1/speech:recognize";
 
 async function sendSTTRequest(audioBuffer) {
     try {
+        // Optimize audio buffer (reduce size if needed)
+        const optimizedBuffer = optimizeAudioBuffer(audioBuffer);
+        
         // Convert buffer to base64 for Google API
-        const base64Audio = audioBuffer.toString('base64');
+        const base64Audio = optimizedBuffer.toString('base64');
 
         // Get OAuth2 access token
         const client = getAuthClient();
@@ -20,12 +24,19 @@ async function sendSTTRequest(audioBuffer) {
                 sampleRateHertz: SAMPLE_RATE,
                 languageCode: "fr-FR",
                 alternativeLanguageCodes: ["en-US", "en-GB"],
-                audioChannelCount: 2
+                audioChannelCount: 1, // Mono for better performance
+                // Performance optimizations
+                enableAutomaticPunctuation: true,
+                enableWordTimeOffsets: false, // Reduces response size
+                model: "latest_short", // Optimized for short audio
+                useEnhanced: true, // Better accuracy
+                // Profanity filtering
+                profanityFilter: false
             },
             audio: { content: base64Audio }
         };
 
-        console.log('Sending STT request with audio size:', audioBuffer.length, 'bytes');
+        console.log('🚀 Sending optimized STT request with audio size:', optimizedBuffer.length, 'bytes (original:', audioBuffer.length, 'bytes)');
 
         const response = await fetch(STT_API_URL, {
             method: 'POST',
@@ -55,7 +66,10 @@ async function sendSTTRequest(audioBuffer) {
         if (sttResponse.results && sttResponse.results.length > 0 &&
             sttResponse.results[0].alternatives && sttResponse.results[0].alternatives.length > 0) {
             const transcript = sttResponse.results[0].alternatives[0].transcript;
-            console.log("Transcript:", transcript);
+            const confidence = sttResponse.results[0].alternatives[0].confidence || 0;
+            
+            console.log(`📝 Transcript (confidence: ${(confidence * 100).toFixed(1)}%):`, transcript);
+                        
             return transcript;
         } else {
             console.warn("No transcription found in the STT response");
