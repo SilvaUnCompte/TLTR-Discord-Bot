@@ -17,7 +17,7 @@ async function sendDiscordMessage(interaction, content, options = {}) {
     const {
         prefix = '',
         continuationPrefix = '...',
-        maxLength = 1900,
+        maxLength = 1990,
         useEditReply = true,
         ephemeral = false
     } = options;
@@ -37,9 +37,18 @@ async function sendDiscordMessage(interaction, content, options = {}) {
         // Message too long - split it
         const availableLength = maxLength - prefix.length - continuationPrefix.length;
         const firstPartMaxSize = Math.min(availableLength, content.length);
-        const firstPartCutPoint = findOptimalCutPoint(content, firstPartMaxSize);
-        const firstPart = content.substring(0, firstPartCutPoint);
-        const remainingContent = content.substring(firstPartCutPoint);
+        const cutInfo = findOptimalCutPoint(content, firstPartMaxSize);
+        
+        let firstPart = content.substring(0, cutInfo.cutPoint);
+        let remainingContent = content.substring(cutInfo.cutPoint);
+        
+        // Handle code block fixes if needed
+        if (cutInfo.needsCodeBlockFix) {
+            // Close the code block in the first part
+            firstPart += '\n```';
+            // Reopen the code block in the remaining content
+            remainingContent = '```' + cutInfo.codeBlockLang + '\n' + remainingContent;
+        }
 
         // Send the first message with continuation prefix at the end if there's more content
         const firstMessage = remainingContent.length > 0 
@@ -66,8 +75,21 @@ async function sendDiscordMessage(interaction, content, options = {}) {
             if (willHaveNextChunk) {
                 // Not the last chunk - add continuation prefix at the end
                 const availableForContent = maxLength - continuationPrefix.length;
-                chunkSize = findOptimalCutPoint(remainingText, availableForContent);
-                const chunkContent = remainingText.substring(0, chunkSize);
+                const chunkCutInfo = findOptimalCutPoint(remainingText, availableForContent);
+                chunkSize = chunkCutInfo.cutPoint;
+                
+                let chunkContent = remainingText.substring(0, chunkSize);
+                
+                // Handle code block fixes if needed
+                if (chunkCutInfo.needsCodeBlockFix) {
+                    chunkContent += '\n```';
+                    
+                    // Prepare the remaining content with reopened code block
+                    const afterCut = remainingText.substring(chunkSize);
+                    remainingContent = remainingContent.substring(0, currentPosition + chunkSize) +
+                                     '```' + chunkCutInfo.codeBlockLang + '\n' + afterCut;
+                }
+                
                 messageContent = `${chunkContent}${continuationPrefix}`;
             } else {
                 // Last chunk - no continuation prefix needed
@@ -100,14 +122,23 @@ async function sendDiscordMessage(interaction, content, options = {}) {
 }
 
 /**
- * Finds the optimal cut point in text to avoid splitting words
+ * Finds the optimal cut point in text to avoid splitting words and code blocks
  * @param {string} text - The text to analyze
  * @param {number} maxLength - Maximum allowed length
- * @returns {number} - The optimal cut position
+ * @returns {Object} - { cutPoint: number, needsCodeBlockFix: boolean, codeBlockLang: string }
  */
 function findOptimalCutPoint(text, maxLength) {
     if (text.length <= maxLength) {
-        return text.length;
+        return { cutPoint: text.length, needsCodeBlockFix: false, codeBlockLang: '' };
+    }
+    
+    // Check if we're inside a code block at the cut point
+    const codeBlockInfo = analyzeCodeBlocks(text, maxLength);
+    
+    // If we're inside a code block, find a safe cut point
+    if (codeBlockInfo.insideCodeBlock) {
+        const safePoint = findSafeCutPointAroundCodeBlock(text, maxLength, codeBlockInfo);
+        return safePoint;
     }
     
     // Define break characters in order of preference
@@ -151,7 +182,97 @@ function findOptimalCutPoint(text, maxLength) {
         }
     }
     
-    return bestCutPoint;
+    return { cutPoint: bestCutPoint, needsCodeBlockFix: false, codeBlockLang: '' };
+}
+
+/**
+ * Analyzes if a position is inside a code block
+ * @param {string} text - The text to analyze
+ * @param {number} position - The position to check
+ * @returns {Object} - Information about code blocks
+ */
+function analyzeCodeBlocks(text, position) {
+    const codeBlockRegex = /```(\w*)\n/g;
+    let match;
+    let insideCodeBlock = false;
+    let currentBlockStart = -1;
+    let currentBlockLang = '';
+    
+    // Find all code block starts
+    while ((match = codeBlockRegex.exec(text)) !== null) {
+        const blockStart = match.index;
+        const blockLang = match[1] || '';
+        
+        if (blockStart < position) {
+            // Look for the closing ``` after this opening
+            const closingRegex = /```/g;
+            closingRegex.lastIndex = match.index + match[0].length;
+            const closingMatch = closingRegex.exec(text);
+            
+            if (closingMatch && closingMatch.index > position) {
+                // We're inside this code block
+                insideCodeBlock = true;
+                currentBlockStart = blockStart;
+                currentBlockLang = blockLang;
+                break;
+            } else if (!closingMatch) {
+                // Unclosed code block
+                insideCodeBlock = true;
+                currentBlockStart = blockStart;
+                currentBlockLang = blockLang;
+                break;
+            }
+        } else {
+            break; // Past our position
+        }
+    }
+    
+    return {
+        insideCodeBlock,
+        blockStart: currentBlockStart,
+        blockLang: currentBlockLang
+    };
+}
+
+/**
+ * Finds a safe cut point around code blocks
+ * @param {string} text - The text to analyze
+ * @param {number} maxLength - Maximum allowed length
+ * @param {Object} codeBlockInfo - Information about the code block
+ * @returns {Object} - Safe cut point information
+ */
+function findSafeCutPointAroundCodeBlock(text, maxLength, codeBlockInfo) {
+    // Strategy 1: Try to cut before the code block
+    if (codeBlockInfo.blockStart > maxLength * 0.5) {
+        // Find a good break point before the code block
+        const beforeBlock = text.substring(0, codeBlockInfo.blockStart);
+        const cutPoint = findOptimalCutPoint(beforeBlock, Math.min(beforeBlock.length, maxLength));
+        if (cutPoint.cutPoint > maxLength * 0.5) {
+            return { cutPoint: cutPoint.cutPoint, needsCodeBlockFix: false, codeBlockLang: '' };
+        }
+    }
+    
+    // Strategy 2: Find the end of the code block and cut after it
+    const blockStartMatch = text.substring(codeBlockInfo.blockStart).match(/```(\w*)\n/);
+    if (blockStartMatch) {
+        const searchStart = codeBlockInfo.blockStart + blockStartMatch[0].length;
+        const closingMatch = text.substring(searchStart).match(/```/);
+        
+        if (closingMatch) {
+            const blockEnd = searchStart + closingMatch.index + 3; // Include the closing ```
+            if (blockEnd <= maxLength * 1.2) { // Allow some flexibility
+                return { cutPoint: blockEnd, needsCodeBlockFix: false, codeBlockLang: '' };
+            }
+        }
+    }
+    
+    // Strategy 3: We must cut inside the code block - add closing and reopening
+    const cutPoint = Math.min(maxLength - 10, text.length); // Leave space for ```
+    return {
+        cutPoint: cutPoint,
+        needsCodeBlockFix: true,
+        codeBlockLang: codeBlockInfo.blockLang
+    };
 }
 
 /**
