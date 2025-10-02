@@ -17,12 +17,13 @@ async function startCopilot(interaction) {
 
         await interaction.deferReply();
 
-        const connection = joinVoiceChannel({
+        let connection = joinVoiceChannel({
             channelId: interaction.member.voice.channel.id,
             guildId: interaction.guild.id,
             adapterCreator: interaction.guild.voiceAdapterCreator,
             selfDeaf: false,
-            selfMute: false
+            selfMute: false,
+            encryption: false
         });
 
         try {
@@ -38,30 +39,23 @@ async function startCopilot(interaction) {
 
         // Remove any existing listeners to prevent accumulation
         receiver.speaking.removeAllListeners("start");
+        receiver.speaking.removeAllListeners("end");
 
         // Record when a user starts speaking
         receiver.speaking.on("start", async (userId) => {
             // Prevent duplicate recordings for the same user
-            if (activeRecordings.has(userId)) {
-                console.log(`🔒 User ${userId} already being recorded, skipping...`);
-                return;
-            }
-
+            if (activeRecordings.has(userId)) return;
             activeRecordings.add(userId);
+
             console.log(`🎤 Starting recording for user ${userId}`);
 
             try {
                 // Wait for transcript from listenToUser
-                const transcript = await listenToUser(receiver, userId);
+                const transcript = await listenToUser(interaction, receiver, userId);
 
                 if (transcript) {
-                    console.log(`🗣️ User ${userId} said: "${transcript}"`);
-
                     // Send transcript to channel
-                    await interaction.followUp({
-                        content: `🎤 **Transcript:** ${transcript}`,
-                        ephemeral: false
-                    });
+                    await sendDiscordMessage(interaction, `"${transcript}"`, { prefix: `<@${userId}> said: `, useEditReply: false });
 
                     // Process with AI (separate method)
                     await processWithAI(transcript, interaction);
@@ -84,11 +78,20 @@ async function startCopilot(interaction) {
     } catch (error) {
         console.error("Error in voice copilot:", error);
         await sendDiscordErrorMessage(interaction, "An error occurred while setting up voice recording.");
+        
+        // Clean up connection if it exists
+        try {
+            if (connection) {
+                connection.destroy();
+            }
+        } catch (cleanupError) {
+            console.error("Error cleaning up connection:", cleanupError);
+        }
     }
 }
 
 // ====== Listen to user and return transcript (Promise-based) ======
-function listenToUser(receiver, userId) {
+function listenToUser(interaction, receiver, userId) {
     return new Promise((resolve, reject) => {
         console.log(`🎤 ${userId} is speaking...`);
 
@@ -110,6 +113,16 @@ function listenToUser(receiver, userId) {
         const audioChunks = [];
         let recordingStartTime = Date.now();
 
+        // Add error handler to prevent crashes
+        audioStream.on('error', (error) => {
+            console.error('Audio stream error:', error);
+            resolve(null);
+        });
+        decoder.on('error', (error) => {
+            console.error('Decoder error:', error);
+            resolve(null);
+        });
+
         audioStream.pipe(decoder);
 
         decoder.on('data', (chunk) => {
@@ -117,7 +130,10 @@ function listenToUser(receiver, userId) {
         });
 
         decoder.on('end', async () => {
-            if (audioChunks.length === 0) return;
+            if (audioChunks.length === 0) {
+                resolve(null);
+                return;
+            }
 
             const recordingDuration = Date.now() - recordingStartTime;
             console.log(`✅ Audio recording finished after ${recordingDuration}ms, analyzing audio...`);
@@ -139,6 +155,15 @@ function listenToUser(receiver, userId) {
                     console.log(`🔇 ${validation.reason}`);
                     resolve(null);
                     return;
+                }
+
+                // Set "Bot is writing..." status
+                if (interaction && interaction.channel && interaction.channel.sendTyping) {
+                    try {
+                        await interaction.channel.sendTyping();
+                    } catch (e) {
+                        console.warn("Failed to set typing indicator:", e);
+                    }
                 }
 
                 // Send to STT and resolve with transcript
@@ -177,12 +202,12 @@ async function processWithAI(transcript, interaction) {
             .sort((a, b) => b.createdTimestamp - a.createdTimestamp)
             .map(msg => GroqMessage.assistant(msg.content));
         const transcriptMessage = GroqMessage.user(transcript);
-        const contextMessage = GroqMessage.system("You are a developer assistant. Provide very concise responses.");    
+        const contextMessage = GroqMessage.system("You are a developer assistant. Provide very concise responses.");
 
         const response = await sendLLMRequest([...botMessages, contextMessage, transcriptMessage]);
 
         if (response) {
-            await sendDiscordMessage(interaction, response, { prefix: '🤖 **Copilot:** ', useEditReply: false });
+            await sendDiscordMessage(interaction, response, { useEditReply: false });
         } else {
             console.log("🤖 AI returned no response");
         }
