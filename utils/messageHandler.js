@@ -18,7 +18,8 @@ async function sendDiscordMessage(interaction, content, options = {}) {
         prefix = '',
         continuationPrefix = '...',
         maxLength = 1900,
-        useEditReply = true
+        useEditReply = true,
+        ephemeral = false
     } = options;
 
     try {
@@ -28,7 +29,7 @@ async function sendDiscordMessage(interaction, content, options = {}) {
             if (useEditReply) {
                 await interaction.editReply(fullFirstMessage);
             } else {
-                await interaction.reply(fullFirstMessage);
+                await interaction.followUp({ content: fullFirstMessage, ephemeral: ephemeral });
             }
             return;
         }
@@ -48,7 +49,7 @@ async function sendDiscordMessage(interaction, content, options = {}) {
         if (useEditReply) {
             await interaction.editReply(firstMessage);
         } else {
-            await interaction.reply(firstMessage);
+            await interaction.followUp({ content: firstMessage, ephemeral: ephemeral });
         }
 
         // Split the rest into chunks and send them

@@ -1,4 +1,4 @@
-const { sendRequest, GroqMessage } = require("../API/groq");
+const { sendLLMRequest, GroqMessage } = require("../API/groq");
 const { sendDiscordErrorMessage, sendDiscordMessage } = require("../utils/messageHandler");
 
 async function tltr(interaction) {
@@ -13,7 +13,7 @@ async function tltr(interaction) {
         limit = Math.max(1, Math.min(limit, 100)); // Clamp between 1 and 100
 
         // Add system message for context
-        const systemMessage = GroqMessage.system("You are an assistant that summarizes Discord conversations. Make SHORT and CONCISE summaries (maximum 300 words). Use a natural tone in the language of the conversation. Focus on key points and the general atmosphere.");
+        const systemMessage = GroqMessage.system("You are an assistant that summarizes conversations. Make SHORT and CONCISE summaries (maximum 300 words). Use a natural tone in the language of the conversation. Focus on key points and the general atmosphere.");
 
         // Get last messages in the channel
         const channel = interaction.channel;
@@ -27,7 +27,7 @@ async function tltr(interaction) {
         const messages = [systemMessage, ...Array.from(fetchedMessages.values()).reverse().map(msg => GroqMessage.fromDiscordMessage(msg))];
 
         // Send the request to the AI
-        const response = await sendRequest(messages, 600);
+        const response = await sendLLMRequest(messages, 600);
 
         // Send the response
         await sendDiscordMessage(interaction, response, { prefix: '🤖 **TLTR:** ' });

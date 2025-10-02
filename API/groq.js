@@ -6,7 +6,7 @@ const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
  * @param {GroqMessage[]} messages
  * @returns {Promise<string>}
  */
-async function sendRequest(messages, max_tokens = 1024) {
+async function sendLLMRequest(messages, max_tokens = 1024) {
     try {
         const chatCompletion = await groq.chat.completions.create({
             messages: messages.map(message => message.toObject()),
@@ -52,4 +52,4 @@ class GroqMessage {
     }
 }
 
-module.exports = { sendRequest, GroqMessage };
+module.exports = { sendLLMRequest, GroqMessage };
