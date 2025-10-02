@@ -12,23 +12,17 @@ const commands = [
             await interaction.editReply(`🏓 Pong! Latency is ${latency}ms. API Latency is ${Math.round(client.ws.ping)}ms`);
         }
     },
-    // ========== Say command to make the bot repeat a message ==========
+    // ========== Ask command to make the bot answer a message ==========
     {
         data: new SlashCommandBuilder()
-            .setName('say')
-            .setDescription('Make the bot say something')
+            .setName('ask')
+            .setDescription('Make the bot answer a question')
             .addStringOption(option =>
                 option.setName('text')
-                    .setDescription('What should the bot say?')
+                    .setDescription('What question do you want to ask?')
                     .setRequired(true)
             ),
-        async execute(interaction) {
-            const text = interaction.options.getString('text');
-            await interaction.reply({
-                content: text,
-                allowedMentions: { parse: [] }
-            });
-        }
+        async execute(interaction) { await require('./commands/ask').ask(interaction);}
     },
     // ========== TLTR command to summarize recent messages ==========
     {
@@ -39,6 +33,18 @@ const commands = [
                 option.setName('limit')
                     .setDescription('Number of messages to consider (default 25, max 100)')
                     .setRequired(false)
+            )
+            .addStringOption(option =>
+                option.setName('tone')
+                    .setDescription('Choose the tone of the summary (default: Normal)')
+                    .setRequired(false)
+                    .addChoices(
+                        { name: 'Normal', value: 'normal' },
+                        { name: 'Sarcastic', value: 'sarcastic' },
+                        { name: 'Formal', value: 'formal' },
+                        { name: 'Friendly', value: 'friendly' },
+                        { name: 'Concise', value: 'concise' }
+                    )
             ),
         async execute(interaction) { await require('./commands/tltr').tltr(interaction); }
     },
@@ -46,7 +52,7 @@ const commands = [
     {
         data: new SlashCommandBuilder()
             .setName('copilot')
-            .setDescription('Join the voice channel to assist you. Start with "Copilot..." to discuss.'),
+            .setDescription('Join the voice channel to assist you. Start talking to discuss.'),
         async execute(interaction) { await require('./commands/vocal-copilot').startCopilot(interaction); }
     }
 ];

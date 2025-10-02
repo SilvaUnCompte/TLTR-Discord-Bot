@@ -12,8 +12,18 @@ async function tltr(interaction) {
         if (isNaN(limit)) limit = defaultLimit;
         limit = Math.max(1, Math.min(limit, 100)); // Clamp between 1 and 100
 
+        // Get tone option or default to 'normal'
+        const tone = interaction.options.getString('tone') || 'normal';
+        const toneInstructions = {
+            normal: "",
+            sarcastic: "Use a very sarcastic and ironic tone in the summary.",
+            formal: "Write the summary in a very formal tone.",
+            friendly: "Make the summary sound very friendly and approachable.",
+            concise: "Keep the summary really short and to the point."
+        }[tone];
+
         // Add system message for context
-        const systemMessage = GroqMessage.system("You are an assistant that summarizes conversations. Make SHORT and CONCISE summaries (maximum 300 words). Use a natural tone in the language of the conversation. Focus on key points and the general atmosphere.");
+        const systemMessage = GroqMessage.system("You are an assistant that summarizes conversations. Make SHORT and CONCISE summaries (maximum 300 words). Use a natural tone in the language of the conversation. Focus on key points and the general atmosphere. " + toneInstructions);
 
         // Get last messages in the channel
         const channel = interaction.channel;
