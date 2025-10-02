@@ -164,23 +164,23 @@ The bot uses a centralized command system for easy management:
 
 ```
 TLTR-Discord-Bot/
-├── 📁 API/                     # External API integrations
+├── 📁 API/                      # External API integrations
 │   ├── groq.js                  # Groq AI API integration
 │   └── STT.js                   # Google Speech-to-Text API
-├── 📁 commands/              # Individual command modules
-│   ├── tltr.js              # AI-powered conversation summarization
-│   └── vocal-copilot.js     # Voice channel integration
-├── 📁 utils/                 # Utility modules
-│   ├── audioAnalyzer.js     # Audio processing and validation
-│   ├── googleAuth.js        # Google authentication handling
-│   └── messageHandler.js    # Discord message splitting utilities
-├── 📄 index.js              # Main bot application & event handlers
-├── 📄 command-list.js       # Centralized command definitions & logic
-├── 📄 deploy-commands.js    # Command deployment & registration script
-├── 📄 package.json          # Dependencies, scripts & project metadata
-├── 📄 .env                  # Your bot credentials (not in git)
-├── 📄 google-credentials.json # Google Cloud service account (not in git)
-└── 📄 README.md             # Project documentation (this file)
+├── 📁 commands/                 # Individual command modules
+│   ├── tltr.js                  # AI-powered conversation summarization
+│   └── vocal-copilot.js         # Voice channel integration
+├── 📁 utils/                    # Utility modules
+│   ├── audioAnalyzer.js         # Audio processing and validation
+│   ├── googleAuth.js            # Google authentication handling
+│   └── messageHandler.js        # Discord message splitting utilities
+├── 📄 index.js                  # Main bot application & event handlers
+├── 📄 command-list.js          # Centralized command definitions & logic
+├── 📄 deploy-commands.js       # Command deployment & registration script
+├── 📄 package.json             # Dependencies, scripts & project metadata
+├── 📄 .env                     # Your bot credentials (not in git)
+├── 📄 google-credentials.json  # Google Cloud service account (not in git)
+└── 📄 README.md                # Project documentation (this file)
 ```
 
 ### 🏗️ Architecture Overview
