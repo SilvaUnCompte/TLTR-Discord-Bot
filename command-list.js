@@ -18,7 +18,7 @@ const commands = [
             .setName('ask')
             .setDescription('Make the bot answer a question')
             .addStringOption(option =>
-                option.setName('text')
+                option.setName('question')
                     .setDescription('What question do you want to ask?')
                     .setRequired(true)
             ),
