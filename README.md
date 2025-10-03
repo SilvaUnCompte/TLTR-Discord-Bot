@@ -6,6 +6,7 @@
 ## 🚀 Features
 
 - ✅ **Slash Command Support** - Full Discord v14 compatibility
+- 🤖 **AI-Powered Q&A** - Ask questions and get LLM responses
 - 🤖 **AI-Powered Conversation Summarization** - TLTR with AI integration
 - 🎤 **Voice Channel Integration** - Real-time voice recording and speech-to-text
 - 📝 **Environment Configuration** - Easy setup with `.env` files
@@ -18,6 +19,7 @@
 | Command | Description | Usage Example |
 |---------|-------------|---------------|
 | `/ping` | Shows bot and API latency | `/ping` → "🏓 Pong! Latency is 45ms. API Latency is 67ms" |
+| `/ask <question>` | 🤖 Ask the AI bot any question | `/ask What is the weather like?` → AI responds to your question |
 | `/tltr [messages]` | 🤖 AI-powered conversation summarization | `/tltr 50` → Summarizes last 50 messages with AI |
 | `/copilot` | 🎤 Join voice channel and start voice recording | `/copilot` → Bot joins your voice channel and listens |
 
@@ -109,6 +111,12 @@ Once the bot is running and commands are deployed, you can use these commands in
 ```
 **Bot Response:** `🏓 Pong! Latency is 45ms. API Latency is 67ms`
 
+### 🤖 Ask Command
+```
+/ask What is the capital of France?
+```
+**Bot Response:** AI-powered answer to your question using LLM
+
 ### 🤖 AI Conversation Summarization
 ```
 /tltr 25
@@ -166,6 +174,7 @@ TLTR-Discord-Bot/
 │   ├── groq.js                  # Groq AI API integration
 │   └── STT.js                   # Google Speech-to-Text API
 ├── 📁 commands/                 # Individual command modules
+│   ├── ask.js                   # AI-powered question & answer
 │   ├── tltr.js                  # AI-powered conversation summarization
 │   └── vocal-copilot.js         # Voice channel integration
 ├── 📁 utils/                    # Utility modules
@@ -187,6 +196,7 @@ TLTR-Discord-Bot/
 - **`command-list.js`** - All commands with their data and execute functions
 - **`deploy-commands.js`** - Automated script to register commands with Discord
 - **`commands/`** - Modular command implementations
+  - **`ask.js`** - AI-powered question & answer functionality
   - **`tltr.js`** - AI conversation summarization
   - **`vocal-copilot.js`** - Voice channel integration with real-time STT
 - **`API/`** - External service integrations
