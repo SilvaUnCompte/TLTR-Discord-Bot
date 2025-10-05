@@ -13,6 +13,7 @@
 - 🔧 **Developer Tools** - Automated command deployment scripts
 - 🔒 **Message Splitting** - Automatic handling of Discord's 2000-character limit
 - 🛡️ **Audio Security** - Filtering to prevent false voice triggers
+- 🔍 **Debug & Monitoring** - Error logging and system monitoring
 
 ## 🎯 Available Commands
 
@@ -22,6 +23,7 @@
 | `/ask <question>` | 🤖 Ask the AI bot any question | `/ask What is the weather like?` → AI responds to your question |
 | `/tltr [messages]` | 🤖 AI-powered conversation summarization | `/tltr 50` → Summarizes last 50 messages with AI |
 | `/copilot` | 🎤 Join voice channel and start voice recording | `/copilot` → Bot joins your voice channel and listens |
+| `/debuginfo` | 🔧 Show bot error statistics and debug information | `/debuginfo` → Displays error logs, memory usage, and bot status |
 
 ## Setup Instructions
 
@@ -136,6 +138,18 @@ Once the bot is running and commands are deployed, you can use these commands in
 > 🛡️ **Security Notes:** 
 > - Voice recording includes noise filtering and speech detection
 
+### 🔧 Debug Information
+```
+/debuginfo
+```
+**Bot Response:** Shows comprehensive debug information including:
+- Error statistics and log file counts
+- Bot status (uptime, memory usage, Node.js version)
+- Error types breakdown
+- System health information
+
+> 🔒 **Note:** This command is typically used by administrators for monitoring bot health
+
 ## Development
 
 ### 🔧 Adding New Commands
@@ -175,10 +189,12 @@ TLTR-Discord-Bot/
 │   └── STT.js                   # Google Speech-to-Text API
 ├── 📁 commands/                 # Individual command modules
 │   ├── ask.js                   # AI-powered question & answer
+│   ├── debuginfo.js             # System debug information and error statistics
 │   ├── tltr.js                  # AI-powered conversation summarization
 │   └── vocal-copilot.js         # Voice channel integration
 ├── 📁 utils/                    # Utility modules
 │   ├── audioAnalyzer.js         # Audio processing and validation
+│   ├── errorHandler.js          # Comprehensive error logging and crash prevention
 │   ├── googleAuth.js            # Google authentication handling
 │   └── messageHandler.js        # Discord message splitting utilities
 ├── 📄 index.js                  # Main bot application & event handlers
@@ -197,6 +213,7 @@ TLTR-Discord-Bot/
 - **`deploy-commands.js`** - Automated script to register commands with Discord
 - **`commands/`** - Modular command implementations
   - **`ask.js`** - AI-powered question & answer functionality
+  - **`debuginfo.js`** - System monitoring and error statistics display
   - **`tltr.js`** - AI conversation summarization
   - **`vocal-copilot.js`** - Voice channel integration with real-time STT
 - **`API/`** - External service integrations
@@ -205,7 +222,35 @@ TLTR-Discord-Bot/
 - **`utils/`** - Reusable utility modules
   - **`messageHandler.js`** - Smart Discord message splitting for long content
   - **`audioAnalyzer.js`** - Advanced audio processing and validation
+  - **`errorHandler.js`** - Comprehensive error logging and crash prevention
   - **`googleAuth.js`** - Google Cloud authentication management
+
+## 🔍 Error Handling & Monitoring
+
+The bot includes error handling system that prevents crashes and provides comprehensive logging:
+
+### 📊 **Features:**
+- **Automatic Error Logging** - All errors are logged to `logs/` directory
+- **Crash Prevention** - Bot continues running even when commands fail
+- **User-Friendly Messages** - Clear error messages in English for users
+- **Debug Command** - `/debuginfo` shows system health and error statistics
+- **Configurable Logging** - Adjust log levels and retention via `.env` settings
+
+### ⚙️ **Configuration Options:**
+```bash
+# Error handling settings in .env
+MAX_LOG_DAYS=30              # Log retention period
+LOG_LEVEL=ERROR              # Minimum severity to log
+LOG_DISCORD_WARNINGS=false   # Log Discord API warnings
+LOG_DISCORD_DEBUG=false      # Log Discord debug events
+MAX_LOG_FILE_SIZE=10         # Max file size in MB
+```
+
+### 📁 **Log Structure:**
+- `logs/error-YYYY-MM-DD.log` - Application errors
+- `logs/critical-YYYY-MM-DD.log` - Critical system issues
+- `logs/groq_api_error-YYYY-MM-DD.log` - AI API errors
+- Automatic cleanup after configured retention period
 
 ## Security Notes
 
