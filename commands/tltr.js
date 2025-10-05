@@ -1,5 +1,6 @@
 const { sendLLMRequest, GroqMessage } = require("../API/groq");
 const { sendDiscordErrorMessage, sendDiscordMessage } = require("../utils/messageHandler");
+const errorHandler = require("../utils/errorHandler");
 
 async function tltr(interaction) {
     try {

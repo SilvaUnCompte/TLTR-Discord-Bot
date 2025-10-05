@@ -21,7 +21,7 @@ async function ask(interaction) {
         // Gathered information about the user and the server
         const { userInfo, serverInfo } = await gatherDiscordInfo(interaction);
 
-        const systemMessage = GroqMessage.system(`You are a helpful assistant on a discord server. Answer the user's question clearly and concisely. ${userInfo}. ${serverInfo}.`);
+        const systemMessage = GroqMessage.system(`Your name is Robert. You are a helpful assistant on a discord server. Answer the user's question clearly and concisely. ${userInfo}. ${serverInfo}.`);
 
         // Prepare messages for the AI
         const messages = [...contextMessages, systemMessage, GroqMessage.user(userQuestion)];

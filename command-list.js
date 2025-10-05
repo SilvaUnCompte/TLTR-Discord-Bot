@@ -54,6 +54,13 @@ const commands = [
             .setName('copilot')
             .setDescription('Join the voice channel to assist you. Start talking to discuss.'),
         async execute(interaction) { await require('./commands/vocal-copilot').startCopilot(interaction); }
+    },
+    // ========== Debug Info command to show error statistics ==========
+    {
+        data: new SlashCommandBuilder()
+            .setName('debuginfo')
+            .setDescription('Show bot error statistics and debug information'),
+        async execute(interaction) { await require('./commands/debuginfo').debuginfo(interaction); }
     }
 ];
 

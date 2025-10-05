@@ -1,5 +1,7 @@
 require('dotenv').config();
 const { Groq } = require('groq-sdk');
+const errorHandler = require('../utils/errorHandler');
+
 const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
 
 /**
@@ -18,8 +20,33 @@ async function sendLLMRequest(messages, max_tokens = 1024) {
 
         return chatCompletion.choices[0].message.content;
     } catch (error) {
-        console.error('Error API Groq:', error);
-        throw new Error('Unable to contact Groq API');
+        // Log specific Groq API errors with context
+        const context = {
+            messagesCount: messages.length,
+            maxTokens: max_tokens,
+            model: process.env.GROQ_MODEL
+        };
+
+        // Enhance error with more specific information
+        if (error.status === 429) {
+            const rateLimitError = new Error('Groq API rate limit exceeded');
+            rateLimitError.name = 'RateLimitError';
+            errorHandler.logError(rateLimitError, context, 'GROQ_API_ERROR');
+            throw rateLimitError;
+        } else if (error.status === 401) {
+            const authError = new Error('Groq API authentication failed');
+            authError.name = 'AuthenticationError';
+            errorHandler.logError(authError, context, 'GROQ_API_ERROR');
+            throw authError;
+        } else if (error.status >= 500) {
+            const serverError = new Error('Groq API server error');
+            serverError.name = 'NetworkError';
+            errorHandler.logError(serverError, context, 'GROQ_API_ERROR');
+            throw serverError;
+        } else {
+            errorHandler.logError(error, context, 'GROQ_API_ERROR');
+            throw new Error('Unable to contact Groq API');
+        }
     }
 }
 

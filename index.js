@@ -1,9 +1,22 @@
 const { Client, GatewayIntentBits, Collection } = require('discord.js');
 const commands = require('./command-list').commands;
 const dotenv = require('dotenv');
+const errorHandler = require('./utils/errorHandler');
 
 // Load environment variables
 dotenv.config();
+
+// Setup global error handlers
+process.on('unhandledRejection', (reason, promise) => {
+    errorHandler.handleUnhandledRejection(reason, promise);
+});
+
+process.on('uncaughtException', (error) => {
+    errorHandler.handleUncaughtException(error);
+});
+
+// Clean up old logs on startup
+errorHandler.cleanupOldLogs();
 
 // Create a new client instance
 const client = new Client({
@@ -31,6 +44,12 @@ client.once('clientReady', () => {
     client.guilds.cache.forEach(guild => {
         console.log(`- ${guild.name} (ID: ${guild.id})`);
     });
+
+    // Display error statistics
+    const stats = errorHandler.getErrorStats();
+    if (stats) {
+        console.log(`📊 Error log files: ${stats.totalFiles} total, ${stats.todayFiles} today`);
+    }
 });
 
 // Listen for slash command interactions
@@ -40,33 +59,52 @@ client.on('interactionCreate', async interaction => {
     const command = client.commands.get(interaction.commandName);
 
     if (!command) {
-        console.error(`No command matching ${interaction.commandName} was found.`);
+        const error = new Error(`Command not found: ${interaction.commandName}`);
+        errorHandler.logError(error, { 
+            command: interaction.commandName,
+            user: `${interaction.user.tag} (${interaction.user.id})`
+        }, 'COMMAND_NOT_FOUND');
         return;
     }
 
     try {
         await command.execute(interaction);
-        console.log(`> ${interaction.user.tag} executed /${interaction.commandName}`);
+        console.log(`✅ ${interaction.user.tag} executed /${interaction.commandName}`);
     } catch (error) {
-        console.error('Error executing command:', error);
-
-        const errorMessage = 'There was an error while executing this command!';
-
-        if (interaction.replied || interaction.deferred) {
-            await interaction.followUp({ content: errorMessage, ephemeral: true });
-        } else {
-            await interaction.reply({ content: errorMessage, ephemeral: true });
-        }
+        await errorHandler.handleInteractionError(interaction, error);
     }
 });
 
-// Error handling
+// Enhanced Discord client error handling
 client.on('error', error => {
-    console.error('Discord client error:', error);
+    errorHandler.handleClientError(error, { source: 'Discord Client' });
 });
 
-process.on('unhandledRejection', error => {
-    console.error('Unhandled promise rejection:', error);
+client.on('warn', warning => {
+    console.warn('⚠️ Discord Client Warning:', warning);
+    errorHandler.logError(new Error(warning), { source: 'Discord Client Warning' }, 'WARNING');
+});
+
+client.on('debug', info => {
+    // Only log important debug info to avoid spam
+    if (info.includes('heartbeat') || info.includes('error') || info.includes('disconnect')) {
+        console.debug('🔍 Discord Debug:', info);
+    }
+});
+
+client.on('disconnect', event => {
+    errorHandler.logError(new Error('Discord client disconnected'), { 
+        source: 'Discord Client',
+        event: event
+    }, 'CONNECTION_ERROR');
+});
+
+client.on('reconnecting', () => {
+    console.log('🔄 Reconnecting to Discord...');
+});
+
+client.on('resume', (replayed) => {
+    console.log(`🔄 Resumed connection to Discord. Replayed ${replayed} events.`);
 });
 
 // Login to Discord with your client's token
