@@ -173,9 +173,9 @@ The bot uses a centralized command system for easy management:
    npm run deploy-commands
    ```
 
-3. **Restart the bot:**
+3. **Start the bot:**
    ```bash
-   npm start
+   pm2 start index.js
    ```
 
 **✨ That's it!** The bot automatically loads commands from `command-list.js`
