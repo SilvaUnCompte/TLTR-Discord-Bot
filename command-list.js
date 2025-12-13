@@ -22,7 +22,7 @@ const commands = [
                     .setDescription('What question do you want to ask?')
                     .setRequired(true)
             ),
-        async execute(interaction) { await require('./commands/ask').ask(interaction);}
+        async execute(interaction) { await require('./commands/ask').ask(interaction); }
     },
     // ========== TLTR command to summarize recent messages ==========
     {
@@ -61,6 +61,34 @@ const commands = [
             .setName('debuginfo')
             .setDescription('Show bot error statistics and debug information'),
         async execute(interaction) { await require('./commands/debuginfo').debuginfo(interaction); }
+    },
+    // ========== Config command to manage guild settings ==========
+    {
+        data: new SlashCommandBuilder()
+            .setName('config')
+            .setDescription('View or modify bot configuration (Admin only)')
+            .addStringOption(option =>
+                option.setName('action')
+                    .setDescription('Action to perform')
+                    .setRequired(true)
+                    .addChoices(
+                        { name: 'View current settings', value: 'view' },
+                        { name: 'Set a setting', value: 'set' },
+                        { name: 'Reset to defaults', value: 'reset' },
+                        { name: 'List available settings', value: 'list' }
+                    )
+            )
+            .addStringOption(option =>
+                option.setName('setting')
+                    .setDescription('Setting name to modify')
+                    .setRequired(false)
+            )
+            .addStringOption(option =>
+                option.setName('value')
+                    .setDescription('New value for the setting')
+                    .setRequired(false)
+            ),
+        async execute(interaction) { await require('./commands/config').config(interaction); }
     }
 ];
 

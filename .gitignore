@@ -18,6 +18,9 @@ google-credentials.json
 logs
 *.log
 
+# Config files
+configs/*.json
+
 # Runtime data
 pids
 *.pid
