@@ -40,6 +40,15 @@
 4. Create a bot and copy the token
 5. Copy the Application ID from the "General Information" section
 
+#### Required Privileged Gateway Intents
+
+**IMPORTANT:** You must enable the following **Privileged Gateway Intents** in the Discord Developer Portal:
+
+1. Navigate to **Bot** -> **Privileged Gateway Intents**
+2. Enable these intents:
+   - **Message Content Intent** - Required for message reactions and content access
+   - **Server Members Intent** - Optional, but recommended for full reaction functionality
+
 ### 2. Bot Installation
 
 1. Clone this repository
@@ -312,13 +321,13 @@ If you encounter issues:
 
 [![License: CC BY-NC-SA 4.0](https://img.shields.io/badge/License-CC%20BY--NC--SA%204.0-lightgrey.svg)](https://creativecommons.org/licenses/by-nc-sa/4.0/)
 
-### 🚫 **Usage Restrictions:**
+### **Usage Restrictions:**
 - ❌ **No Commercial Use** - You cannot use this code for commercial purposes (or contact me)
 - ✅ **Personal & Educational Use** - Free to use for non-commercial projects
 - ✅ **Modifications Allowed** - You can modify and redistribute under same license
 - ✅ **Attribution Required** - You must give appropriate credit
 
-### 📄 **What This Means:**
+### **What This Means:**
 - You can use this bot template for your Discord server
 - You can modify and improve the code
 - You must share modifications under the same license
@@ -326,7 +335,7 @@ If you encounter issues:
 
 For the full license text, see the [LICENSE](LICENSE) file.
 
-## 🤝 Contributing
+## Contributing
 
 Contributions are welcome! Feel free to:
 - 🐛 Report bugs
@@ -340,4 +349,4 @@ If this helped you, consider giving it a star on GitHub!
 
 ---
 
-**Happy coding! 🚀** Built with ❤️ using Discord.js v14
+**Happy coding!** Built with ❤️ using Discord.js v14
