@@ -1,5 +1,6 @@
 const { Client, GatewayIntentBits, Collection } = require('discord.js');
 const commands = require('./command-list').commands;
+const { reactionRooter, reactionRemoveRooter } = require('./command-reaction-rooter');
 const dotenv = require('dotenv');
 const errorHandler = require('./utils/errorHandler');
 
@@ -25,6 +26,7 @@ const client = new Client({
         GatewayIntentBits.GuildMessages,
         GatewayIntentBits.MessageContent,
         GatewayIntentBits.GuildVoiceStates,
+        GatewayIntentBits.GuildMessageReactions,
     ]
 });
 
@@ -74,6 +76,10 @@ client.on('interactionCreate', async interaction => {
         await errorHandler.handleInteractionError(interaction, error);
     }
 });
+
+// Listen for reaction additions/removals
+client.on('messageReactionAdd', (reaction_origin, user) => reactionRooter(reaction_origin, user));
+client.on('messageReactionRemove', (reaction_origin, user) => reactionRemoveRooter(reaction_origin, user));
 
 // Enhanced Discord client error handling
 client.on('error', error => {

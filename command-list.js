@@ -82,6 +82,9 @@ const commands = [
                 option.setName('setting')
                     .setDescription('Setting name to modify')
                     .setRequired(false)
+                    .addChoices(
+                        { name: 'starboard.channel', value: 'starboard.channel' }
+                    )
             )
             .addStringOption(option =>
                 option.setName('value')
