@@ -3,27 +3,27 @@
 [![Discord](https://img.shields.io/discord/123456789012345678?label=Join%20the%20Server&logo=discord&style=flat-square)](https://discord.gg/bSXzMrSyd5)
 [![GitHub stars](https://img.shields.io/github/stars/SilvaUnCompte/TLTR-Discord-Bot?style=social)](https://github.com/SilvaUnCompte/TLTR-Discord-Bot)
 
-## 🚀 Features
+## Features
 
-- ✅ **Slash Command Support** - Full Discord v14 compatibility
-- 🤖 **AI-Powered Q&A** - Ask questions and get LLM responses
-- 🤖 **AI-Powered Conversation Summarization** - TLTR with AI integration
-- 🎤 **Voice Channel Integration** - Real-time voice recording and speech-to-text
-- 📝 **Environment Configuration** - Easy setup with `.env` files
-- 🔧 **Developer Tools** - Automated command deployment scripts
-- 🔒 **Message Splitting** - Automatic handling of Discord's 2000-character limit
-- 🛡️ **Audio Security** - Filtering to prevent false voice triggers
-- 🔍 **Debug & Monitoring** - Error logging and system monitoring
+- **Slash Command Support** - Full Discord v14 compatibility
+- **AI-Powered Q&A** - Ask questions and get LLM responses
+- **AI-Powered Conversation Summarization** - TLTR with AI integration
+- **Voice Channel Integration** - Real-time voice recording and speech-to-text
+- **Environment Configuration** - Easy setup with `.env` files
+- **Developer Tools** - Automated command deployment scripts
+- **Message Splitting** - Automatic handling of Discord's 2000-character limit
+- **Audio Security** - Filtering to prevent false voice triggers
+- **Debug & Monitoring** - Error logging and system monitoring
 
-## 🎯 Available Commands
+## Available Commands
 
 | Command | Description | Usage Example |
 |---------|-------------|---------------|
-| `/ping` | Shows bot and API latency | `/ping` → "🏓 Pong! Latency is 45ms. API Latency is 67ms" |
-| `/ask <question>` | 🤖 Ask the AI bot any question | `/ask What is the weather like?` → AI responds to your question |
-| `/tltr [messages]` | 🤖 AI-powered conversation summarization | `/tltr 50` → Summarizes last 50 messages with AI |
-| `/copilot` | 🎤 Join voice channel and start voice recording | `/copilot` → Bot joins your voice channel and listens |
-| `/debuginfo` | 🔧 Show bot error statistics and debug information | `/debuginfo` → Displays error logs, memory usage, and bot status |
+| `/ping` | Shows bot and API latency | `/ping` → "Pong! Latency is 45ms. API Latency is 67ms" |
+| `/ask <question>` | Ask the AI bot any question | `/ask What is the weather like?` → AI responds to your question |
+| `/tltr [messages]` | AI-powered conversation summarization | `/tltr 50` → Summarizes last 50 messages with AI |
+| `/copilot` | Join voice channel and start voice recording | `/copilot` → Bot joins your voice channel and listens |
+| `/debuginfo` | Show bot error statistics and debug information | `/debuginfo` → Displays error logs, memory usage, and bot status |
 
 ## Setup Instructions
 
@@ -111,30 +111,34 @@ npm run deploy-commands
 ```bash
 npm start
 ```
+or
+```bash
+npx pm2 start index.js
+```
 
-## 💡 Usage Examples
+## Usage Examples
 
 Once the bot is running and commands are deployed, you can use these commands in any channel where the bot has permissions:
 
-### 🏓 Ping Command
+### Ping Command
 ```
 /ping
 ```
-**Bot Response:** `🏓 Pong! Latency is 45ms. API Latency is 67ms`
+**Bot Response:** `Pong! Latency is 45ms. API Latency is 67ms`
 
-### 🤖 Ask Command
+### Ask Command
 ```
 /ask What is the capital of France?
 ```
 **Bot Response:** AI-powered answer to your question using LLM
 
-### 🤖 AI Conversation Summarization
+### AI Conversation Summarization
 ```
 /tltr 25
 ```
 **Bot Response:** AI summary of the last 25 messages with key points and context
 
-### 🎤 Voice Channel Integration
+### Voice Channel Integration
 ```
 /copilot
 ```
@@ -144,10 +148,10 @@ Once the bot is running and commands are deployed, you can use these commands in
 3. Transcribes what you say
 4. Processes speech with AI for intelligent responses
 
-> 🛡️ **Security Notes:** 
+> **Security Notes:** 
 > - Voice recording includes noise filtering and speech detection
 
-### 🔧 Debug Information
+### Debug Information
 ```
 /debuginfo
 ```
@@ -157,11 +161,11 @@ Once the bot is running and commands are deployed, you can use these commands in
 - Error types breakdown
 - System health information
 
-> 🔒 **Note:** This command is typically used by administrators for monitoring bot health
+> **Note:** This command is typically used by administrators for monitoring bot health
 
 ## Development
 
-### 🔧 Adding New Commands
+### Adding New Commands
 
 The bot uses a centralized command system for easy management:
 
@@ -187,35 +191,35 @@ The bot uses a centralized command system for easy management:
    pm2 start index.js
    ```
 
-**✨ That's it!** The bot automatically loads commands from `command-list.js`
+**That's it!** The bot automatically loads commands from `command-list.js`
 
-### 📂 Project Structure
+### Project Structure
 
 ```
 TLTR-Discord-Bot/
-├── 📁 API/                      # External API integrations
+├── API/                         # External API integrations
 │   ├── groq.js                  # Groq AI API integration
 │   └── STT.js                   # Google Speech-to-Text API
-├── 📁 commands/                 # Individual command modules
+├── commands/                    # Individual command modules
 │   ├── ask.js                   # AI-powered question & answer
 │   ├── debuginfo.js             # System debug information and error statistics
 │   ├── tltr.js                  # AI-powered conversation summarization
 │   └── vocal-copilot.js         # Voice channel integration
-├── 📁 utils/                    # Utility modules
+├── utils/                       # Utility modules
 │   ├── audioAnalyzer.js         # Audio processing and validation
 │   ├── errorHandler.js          # Comprehensive error logging and crash prevention
 │   ├── googleAuth.js            # Google authentication handling
 │   └── messageHandler.js        # Discord message splitting utilities
-├── 📄 index.js                  # Main bot application & event handlers
-├── 📄 command-list.js          # Centralized command definitions & logic
-├── 📄 deploy-commands.js       # Command deployment & registration script
-├── 📄 package.json             # Dependencies, scripts & project metadata
-├── 📄 .env                     # Your bot credentials (not in git)
-├── 📄 google-credentials.json  # Google Cloud service account (not in git)
-└── 📄 README.md                # Project documentation (this file)
+├── index.js                     # Main bot application & event handlers
+├── command-list.js              # Centralized command definitions & logic
+├── deploy-commands.js           # Command deployment & registration script
+├── package.json                 # Dependencies, scripts & project metadata
+├── .env                         # Your bot credentials (not in git)
+├── google-credentials.json      # Google Cloud service account (not in git)
+└── README.md                    # Project documentation (this file)
 ```
 
-### 🏗️ Architecture Overview
+### Architecture Overview
 
 - **`index.js`** - Core bot logic, event handling, and command execution
 - **`command-list.js`** - All commands with their data and execute functions
@@ -234,18 +238,18 @@ TLTR-Discord-Bot/
   - **`errorHandler.js`** - Comprehensive error logging and crash prevention
   - **`googleAuth.js`** - Google Cloud authentication management
 
-## 🔍 Error Handling & Monitoring
+## Error Handling & Monitoring
 
 The bot includes error handling system that prevents crashes and provides comprehensive logging:
 
-### 📊 **Features:**
+### **Features:**
 - **Automatic Error Logging** - All errors are logged to `logs/` directory
 - **Crash Prevention** - Bot continues running even when commands fail
 - **User-Friendly Messages** - Clear error messages in English for users
 - **Debug Command** - `/debuginfo` shows system health and error statistics
 - **Configurable Logging** - Adjust log levels and retention via `.env` settings
 
-### ⚙️ **Configuration Options:**
+### **Configuration Options:**
 ```bash
 # Error handling settings in .env
 MAX_LOG_DAYS=30              # Log retention period
@@ -255,7 +259,7 @@ LOG_DISCORD_DEBUG=false      # Log Discord debug events
 MAX_LOG_FILE_SIZE=10         # Max file size in MB
 ```
 
-### 📁 **Log Structure:**
+### **Log Structure:**
 - `logs/error-YYYY-MM-DD.log` - Application errors
 - `logs/critical-YYYY-MM-DD.log` - Critical system issues
 - `logs/groq_api_error-YYYY-MM-DD.log` - AI API errors
@@ -269,7 +273,7 @@ MAX_LOG_FILE_SIZE=10         # Max file size in MB
 - Voice data is processed in real-time and never permanently stored
 - Google Speech-to-Text uses secure OAuth2 authentication
 
-## 🐛 Troubleshooting
+## Troubleshooting
 
 ### ❌ Common Issues & Solutions
 
@@ -284,7 +288,7 @@ MAX_LOG_FILE_SIZE=10         # Max file size in MB
 | **"Cannot find module" errors** | ✅ Run `npm install` to install dependencies<br>✅ Check for Node.js version compatibility (16.9.0+)<br>✅ Delete `node_modules` and reinstall if needed |
 | **Audio not being detected** | ✅ Adjust `MIN_VOLUME_THRESHOLD` in `.env`<br>✅ Lower `MIN_SPEECH_DURATION` for shorter speech<br>✅ Check microphone settings and Discord voice activity |
 
-### 🆘 Getting Help
+### Getting Help
 
 If you encounter issues:
 1. **Check Console Logs** - Look for error messages in your terminal
@@ -293,7 +297,7 @@ If you encounter issues:
 4. **Update Dependencies** - Run `npm update` to get latest versions
 5. **Still a problem?** Open an issue on GitHub, I may have missed something!
 
-### 📋 Quick Debugging Checklist
+### Quick Debugging Checklist
 
 **Basic Setup:**
 - [ ] Bot token is correct in `.env`
@@ -315,7 +319,7 @@ If you encounter issues:
 - [ ] Bot has `Connect` and `Speak` voice permissions
 - [ ] Audio security settings are properly configured
 
-## 📜 License
+## License
 
 **Creative Commons Attribution-NonCommercial-ShareAlike 4.0 International (CC BY-NC-SA 4.0)**
 
@@ -338,12 +342,12 @@ For the full license text, see the [LICENSE](LICENSE) file.
 ## Contributing
 
 Contributions are welcome! Feel free to:
-- 🐛 Report bugs
-- 💡 Suggest new features  
-- 🔧 Submit pull requests
-- 📝 Improve documentation
+- Report bugs
+- Suggest new features  
+- Submit pull requests
+- Improve documentation
 
-## ⭐ Show Your Support
+## Show Your Support
 
 If this helped you, consider giving it a star on GitHub!
 
