@@ -116,27 +116,77 @@ function buildStarContent(message, count) {
 }
 
 /**
+ * Pick the first usable image URL from a message-like source
+ * (message, or a forwarded-message snapshot).
+ */
+function pickImageUrl(source) {
+    if (!source) return null;
+    const attachment = source.attachments?.find?.(a =>
+        a.contentType?.startsWith("image/") || /\.(png|jpe?g|gif|webp)$/i.test(a.name || "")
+    );
+    if (attachment) return attachment.url;
+
+    for (const embed of source.embeds || []) {
+        if (embed?.image?.url) return embed.image.url;
+        if (embed?.thumbnail?.url) return embed.thumbnail.url;
+    }
+    return null;
+}
+
+/**
+ * List non-image attachments as markdown links.
+ */
+function listOtherAttachments(source) {
+    if (!source?.attachments?.filter) return [];
+    return [...source.attachments.filter(a =>
+        !(a.contentType?.startsWith("image/") || /\.(png|jpe?g|gif|webp)$/i.test(a.name || ""))
+    ).values()].map(a => `[${a.name || "fichier"}](${a.url})`);
+}
+
+/**
+ * Resolve the content to display: a forwarded message carries its own
+ * content/attachments in `messageSnapshots`, the wrapper message is empty.
+ */
+function resolveDisplaySource(message) {
+    const snapshot = message.messageSnapshots?.first?.() || null;
+
+    let text = message.content?.trim() || "";
+    let imageUrl = pickImageUrl(message);
+    let files = listOtherAttachments(message);
+
+    if (snapshot) {
+        if (!text) text = snapshot.content?.trim() || "";
+        if (!imageUrl) imageUrl = pickImageUrl(snapshot);
+        if (!files.length) files = listOtherAttachments(snapshot);
+    }
+
+    return { text, imageUrl, files, forwarded: Boolean(snapshot) };
+}
+
+/**
  * Build the embed for the starboard post (kept stable; we only edit content).
  */
 function buildStarEmbed(message, count) {
+    const { text, imageUrl, files, forwarded } = resolveDisplaySource(message);
+
+    const parts = [];
+    if (text) parts.push(text);
+    if (files.length) parts.push(files.join("\n"));
+
+    let description = parts.join("\n\n");
+    if (!description && !imageUrl) description = "(no text)";
+
     const embed = new EmbedBuilder()
         .setColor(resolveColor("Gold"))
         .setAuthor({
             name: `${message.author?.tag || "Unknown"}`,
             iconURL: message.author?.displayAvatarURL?.({ size: 64 }) || undefined
-        })
-        .setDescription(message.content?.length ? message.content : "(no text)")
-    // .addFields(
-    //     { name: "Source", value: `[Jump to message](${message.url})`, inline: true },
-    //     { name: "Stars", value: `${count}`, inline: true }
-    // )
-    // .setTimestamp(message.createdTimestamp ? new Date(message.createdTimestamp) : new Date())
-    // .setFooter({ text: `source:${message.id}` });
+        });
 
-    const firstImage = message.attachments?.find?.(a => a.contentType?.startsWith("image/"));
-    if (firstImage) {
-        embed.setImage(firstImage.url);
-    }
+    if (description) embed.setDescription(description.slice(0, 4096));
+    if (imageUrl) embed.setImage(imageUrl);
+    if (forwarded) embed.setFooter({ text: "Message transféré" });
+
     return embed;
 }
 
@@ -154,7 +204,7 @@ async function findExistingStarboardMessage(starboardChannel, sourceMessageId) {
     return null;
 }
 
-async function getStarCount(message) {
+function getStarCount(message) {
     const starReaction = message.reactions?.resolve?.(STAR_EMOJI) || message.reactions?.cache?.get?.(STAR_EMOJI);
     return starReaction?.count ?? 0;
 }
@@ -169,7 +219,8 @@ async function createStarboardEntry(starboardChannel, message, count) {
 
 async function updateStarboardEntry(sbMessage, message, count) {
     const content = buildStarContent(message, count);
-    await sbMessage.edit({ content });
+    const embed = buildStarEmbed(message, count);
+    await sbMessage.edit({ content, embeds: [embed] });
     setMapEntry(sbMessage.guild.id, message.id, sbMessage.id, count);
 }
 
@@ -192,14 +243,30 @@ async function upsertStarboardEntry(starboardChannel, message, count) {
 async function handleStarChange(reaction, user) {
     try {
         reaction = await ensurePartials(reaction);
-        const message = reaction.message;
-        const guild = message.guild;
+        let message = reaction.message;
+        let guild = message.guild;
+        if (!guild && message.guildId) {
+            guild = await message.client.guilds.fetch(message.guildId).catch(() => null);
+        }
         if (!guild) return;
 
         const starboardChannel = await getStarboardChannelFromGuild(guild);
         if (!starboardChannel) return;
 
-        const count = await getStarCount(message);
+        // Refetch the source message from the API: cached reaction counts can be
+        // stale (partial reaction, message not in cache after a restart...), which
+        // made the "last star removed" case silently keep the starboard post.
+        let sourceDeleted = false;
+        try {
+            message = await message.fetch(true);
+        } catch (e) {
+            if (e?.code === 10008) sourceDeleted = true; // Unknown Message
+        }
+
+        // With partials, the rooter can't always tell a bot message apart before fetching.
+        if (!sourceDeleted && message.author?.bot) return;
+
+        const count = sourceDeleted ? 0 : getStarCount(message);
         if (count <= 0) {
             await deleteStarboardEntry(starboardChannel, message);
             return;

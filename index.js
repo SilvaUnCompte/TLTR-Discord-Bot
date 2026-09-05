@@ -1,4 +1,4 @@
-const { Client, GatewayIntentBits, Collection } = require('discord.js');
+const { Client, GatewayIntentBits, Collection, Partials } = require('discord.js');
 const commands = require('./command-list').commands;
 const { reactionRooter, reactionRemoveRooter } = require('./command-reaction-rooter');
 const dotenv = require('dotenv');
@@ -27,6 +27,14 @@ const client = new Client({
         GatewayIntentBits.MessageContent,
         GatewayIntentBits.GuildVoiceStates,
         GatewayIntentBits.GuildMessageReactions,
+    ],
+    // Needed to receive reaction events on messages that are not in cache
+    // (e.g. after a restart), otherwise the events are simply never emitted.
+    partials: [
+        Partials.Message,
+        Partials.Channel,
+        Partials.Reaction,
+        Partials.User,
     ]
 });
 
