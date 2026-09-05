@@ -9,44 +9,103 @@ const STAR_EMOJI = "⭐";
 // JSON storage: configs/starboards/<guildId>.json
 const STARBOARD_DIR = path.join(__dirname, "..", "configs", "starboards");
 
+// In-memory mirror of the JSON files. The bot keeps working (within the
+// process lifetime) even if the disk is not writable.
+const memoryCache = new Map();
+
+// Source messages we already tried to recover by scanning the starboard
+// channel, so we don't rescan on every reaction.
+const scanned = new Set();
+
+let storageWritable = true;
+
+/* -------------------------------------------------------------------------- */
+/* Storage                                                                     */
+/* -------------------------------------------------------------------------- */
+
 function ensureStarboardDir() {
     try {
         if (!fs.existsSync(STARBOARD_DIR)) {
             fs.mkdirSync(STARBOARD_DIR, { recursive: true });
         }
-    } catch (_) { }
+        return true;
+    } catch (error) {
+        console.error(`❌ [starboard] Cannot create ${STARBOARD_DIR}:`, error.message);
+        return false;
+    }
 }
 
 function getGuildFilePath(guildId) {
     return path.join(STARBOARD_DIR, `${guildId}.json`);
 }
 
+/**
+ * Startup self-check: without this, a non-writable configs/ folder silently
+ * broke the whole starboard (every reaction posted a new message because the
+ * mapping could never be persisted).
+ */
+function checkStorage() {
+    if (!ensureStarboardDir()) {
+        storageWritable = false;
+        return;
+    }
+    const probe = path.join(STARBOARD_DIR, ".write-test");
+    try {
+        fs.writeFileSync(probe, "ok", "utf8");
+        try { fs.unlinkSync(probe); } catch (_) { /* cleanup only */ }
+        console.log(`✅ [starboard] Storage OK: ${STARBOARD_DIR}`);
+    } catch (error) {
+        storageWritable = false;
+        console.error(`❌ [starboard] Storage NOT writable (${STARBOARD_DIR}): ${error.code} ${error.message}`);
+        console.error(`   → the starboard mapping cannot be saved: fix the folder rights, e.g.`);
+        console.error(`     chown -R $USER "${path.join(STARBOARD_DIR, "..")}" && chmod -R u+rwX "${path.join(STARBOARD_DIR, "..")}"`);
+    }
+}
+checkStorage();
+
 function loadGuildMap(guildId) {
+    if (memoryCache.has(guildId)) return memoryCache.get(guildId);
+
     ensureStarboardDir();
     const file = getGuildFilePath(guildId);
+    let data = {};
     try {
         if (fs.existsSync(file)) {
             const raw = fs.readFileSync(file, "utf8");
-            const data = JSON.parse(raw);
-            return typeof data === "object" && data ? data : {};
+            const parsed = JSON.parse(raw);
+            if (parsed && typeof parsed === "object") data = parsed;
         }
-    } catch (_) { }
-    return {};
+    } catch (error) {
+        console.error(`❌ [starboard] Cannot read ${file}:`, error.message);
+    }
+    memoryCache.set(guildId, data);
+    return data;
 }
 
 function saveGuildMap(guildId, obj) {
-    ensureStarboardDir();
+    memoryCache.set(guildId, obj);          // always keep memory in sync
+    if (!ensureStarboardDir()) return;
+
     const file = getGuildFilePath(guildId);
+    const tmp = `${file}.tmp`;
     try {
-        fs.writeFileSync(file, JSON.stringify(obj, null, 2), "utf8");
-    } catch (_) { }
+        fs.writeFileSync(tmp, JSON.stringify(obj, null, 2), "utf8");
+        fs.renameSync(tmp, file);           // atomic replace
+        storageWritable = true;
+    } catch (error) {
+        if (storageWritable) {
+            console.error(`❌ [starboard] Cannot write ${file}: ${error.code} ${error.message}`);
+            storageWritable = false;
+        }
+        try { if (fs.existsSync(tmp)) fs.unlinkSync(tmp); } catch (_) { }
+    }
 }
 
 function getMapEntry(guildId, sourceMessageId) {
     const map = loadGuildMap(guildId);
     const entry = map[sourceMessageId];
     if (!entry) return null;
-    if (typeof entry === 'string') {
+    if (typeof entry === "string") {
         const upgraded = { starboardMessageId: entry, count: null };
         map[sourceMessageId] = upgraded;
         saveGuildMap(guildId, map);
@@ -68,6 +127,10 @@ function deleteMapEntry(guildId, sourceMessageId) {
         saveGuildMap(guildId, map);
     }
 }
+
+/* -------------------------------------------------------------------------- */
+/* Channel resolution                                                          */
+/* -------------------------------------------------------------------------- */
 
 /**
  * Extract a channel ID from either a raw ID or a mention like <#123>.
@@ -104,12 +167,18 @@ async function ensurePartials(reaction) {
         if (reaction.message?.author?.partial) {
             await reaction.message.author.fetch();
         }
-    } catch (e) {}
+    } catch (e) { }
     return reaction;
 }
 
+/* -------------------------------------------------------------------------- */
+/* Rendering                                                                   */
+/* -------------------------------------------------------------------------- */
+
 /**
  * Build the starboard message content line (lightweight, easy to edit).
+ * It always contains the source message URL: that is what lets us recover a
+ * lost mapping by scanning the starboard channel.
  */
 function buildStarContent(message, count) {
     return `⭐ x${count} | ${message.url}`;
@@ -144,8 +213,8 @@ function listOtherAttachments(source) {
 }
 
 /**
- * Resolve the content to display: a forwarded message carries its own
- * content/attachments in `messageSnapshots`, the wrapper message is empty.
+ * Resolve what to display: a forwarded message is an empty wrapper, its real
+ * content lives in `messageSnapshots`.
  */
 function resolveDisplaySource(message) {
     const snapshot = message.messageSnapshots?.first?.() || null;
@@ -163,9 +232,6 @@ function resolveDisplaySource(message) {
     return { text, imageUrl, files, forwarded: Boolean(snapshot) };
 }
 
-/**
- * Build the embed for the starboard post (kept stable; we only edit content).
- */
 function buildStarEmbed(message, count) {
     const { text, imageUrl, files, forwarded } = resolveDisplaySource(message);
 
@@ -190,19 +256,69 @@ function buildStarEmbed(message, count) {
     return embed;
 }
 
+/* -------------------------------------------------------------------------- */
+/* Starboard post lookup                                                       */
+/* -------------------------------------------------------------------------- */
+
+const SCAN_PAGES = 3; // up to 300 recent starboard messages
+
+/**
+ * Recover a starboard post without the JSON mapping, by looking for the source
+ * message id inside our own posts (buildStarContent embeds the message URL).
+ */
+async function scanStarboardForSource(starboardChannel, sourceMessageId) {
+    const selfId = starboardChannel.client?.user?.id;
+    let before;
+    try {
+        for (let page = 0; page < SCAN_PAGES; page++) {
+            const batch = await starboardChannel.messages.fetch({ limit: 100, ...(before ? { before } : {}) });
+            if (!batch || batch.size === 0) return null;
+
+            const hit = batch.find(m =>
+                (!selfId || m.author?.id === selfId) && m.content?.includes(sourceMessageId)
+            );
+            if (hit) return hit;
+
+            before = batch.lastKey();
+            if (batch.size < 100) return null;
+        }
+    } catch (error) {
+        console.error("❌ [starboard] Scan failed:", error.message);
+    }
+    return null;
+}
+
 async function findExistingStarboardMessage(starboardChannel, sourceMessageId) {
-    // Quick path using JSON mapping
     const guildId = starboardChannel.guild?.id;
-    const mappedId = guildId ? (getMapEntry(guildId, sourceMessageId)?.starboardMessageId) : null;
+
+    // 1. Quick path: JSON mapping
+    const mappedId = guildId ? getMapEntry(guildId, sourceMessageId)?.starboardMessageId : null;
     if (mappedId) {
-        try {
-            const msg = await starboardChannel.messages.fetch(mappedId);
-            if (msg) return msg;
-        } catch (_) { }
+        const msg = await starboardChannel.messages.fetch(mappedId).catch(() => null);
+        if (msg) return msg;
+        // Dead reference (post deleted by hand): drop it so we can repost.
+        if (guildId) deleteMapEntry(guildId, sourceMessageId);
+    }
+
+    // 2. Recovery: the mapping can be missing (wiped configs, unwritable disk,
+    //    bot moved to another machine). Scan once per source message.
+    const scanKey = `${guildId}:${sourceMessageId}`;
+    if (!scanned.has(scanKey)) {
+        scanned.add(scanKey);
+        const recovered = await scanStarboardForSource(starboardChannel, sourceMessageId);
+        if (recovered) {
+            console.log(`🔎 [starboard] Recovered post ${recovered.id} for source ${sourceMessageId}`);
+            if (guildId) setMapEntry(guildId, sourceMessageId, recovered.id, null);
+            return recovered;
+        }
     }
 
     return null;
 }
+
+/* -------------------------------------------------------------------------- */
+/* Actions                                                                     */
+/* -------------------------------------------------------------------------- */
 
 function getStarCount(message) {
     const starReaction = message.reactions?.resolve?.(STAR_EMOJI) || message.reactions?.cache?.get?.(STAR_EMOJI);
@@ -225,16 +341,25 @@ async function updateStarboardEntry(sbMessage, message, count) {
 }
 
 async function deleteStarboardEntry(starboardChannel, message) {
+    const guildId = starboardChannel.guild?.id;
     const sbMessage = await findExistingStarboardMessage(starboardChannel, message.id);
-    if (!sbMessage) return;
-    await sbMessage.delete().catch(() => { });
-    deleteMapEntry(starboardChannel.guild.id, message.id);
+    if (!sbMessage) {
+        if (guildId) deleteMapEntry(guildId, message.id);
+        return;
+    }
+    try {
+        await sbMessage.delete();
+        if (guildId) deleteMapEntry(guildId, message.id);
+    } catch (error) {
+        // Keep the mapping: without it we would post a duplicate next time.
+        console.error(`❌ [starboard] Cannot delete post ${sbMessage.id}: ${error.message}`);
+    }
 }
 
 async function upsertStarboardEntry(starboardChannel, message, count) {
-    let sbMessage = await findExistingStarboardMessage(starboardChannel, message.id);
+    const sbMessage = await findExistingStarboardMessage(starboardChannel, message.id);
     if (!sbMessage) {
-        sbMessage = await createStarboardEntry(starboardChannel, message, count);
+        await createStarboardEntry(starboardChannel, message, count);
     } else {
         await updateStarboardEntry(sbMessage, message, count);
     }
@@ -244,6 +369,7 @@ async function handleStarChange(reaction, user) {
     try {
         reaction = await ensurePartials(reaction);
         let message = reaction.message;
+
         let guild = message.guild;
         if (!guild && message.guildId) {
             guild = await message.client.guilds.fetch(message.guildId).catch(() => null);
@@ -253,9 +379,9 @@ async function handleStarChange(reaction, user) {
         const starboardChannel = await getStarboardChannelFromGuild(guild);
         if (!starboardChannel) return;
 
-        // Refetch the source message from the API: cached reaction counts can be
-        // stale (partial reaction, message not in cache after a restart...), which
-        // made the "last star removed" case silently keep the starboard post.
+        // Refetch the source message: cached reaction counts can be stale
+        // (partial reaction, message not cached after a restart...), which made
+        // the "last star removed" case keep the starboard post alive.
         let sourceDeleted = false;
         try {
             message = await message.fetch(true);
@@ -263,17 +389,19 @@ async function handleStarChange(reaction, user) {
             if (e?.code === 10008) sourceDeleted = true; // Unknown Message
         }
 
-        // With partials, the rooter can't always tell a bot message apart before fetching.
+        // With partials the rooter can't always tell a bot message apart.
         if (!sourceDeleted && message.author?.bot) return;
 
         const count = sourceDeleted ? 0 : getStarCount(message);
+        console.log(`⭐ [starboard] ${message.id} → ${count} star(s)`);
+
         if (count <= 0) {
             await deleteStarboardEntry(starboardChannel, message);
             return;
         }
         await upsertStarboardEntry(starboardChannel, message, count);
     } catch (error) {
-        console.error('❌ Error in handleStarChange:', error);
+        console.error("❌ Error in handleStarChange:", error);
         await errorHandler.logError(error, {
             user: `${user?.tag || "unknown"} (${user?.id || "?"})`,
             messageId: reaction?.message?.id,
