@@ -1,7 +1,7 @@
 {
   "name": "tltd-discord-bot",
   "version": "1.0.0",
-  "description": "A Discord bot template with slash commands",
+  "description": "Useless bot made by Silvathor eheh",
   "main": "index.js",
   "scripts": {
     "start": "node index.js",
