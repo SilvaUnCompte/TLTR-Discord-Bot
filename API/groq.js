@@ -1,53 +1,103 @@
-require('dotenv').config();
+/**
+ * Groq chat completion client.
+ *
+ * Conversation history is never replayed as real chat turns: anything written
+ * by a Discord member is untrusted input, so it is wrapped in a single
+ * delimited block that the system prompt marks as data. Replaying it as `user`
+ * turns is what lets a member overwrite the instructions.
+ */
 const { Groq } = require('groq-sdk');
 const errorHandler = require('../utils/errorHandler');
+const { str } = require('../lib/env');
 
-const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
+const DEFAULT_MODEL = 'meta-llama/llama-4-maverick-17b-128e-instruct';
+const TRANSCRIPT_OPEN = '<<<CONVERSATION>>>';
+const TRANSCRIPT_CLOSE = '<<<END_CONVERSATION>>>';
+
+let client = null;
+
+function getClient() {
+    if (!client) {
+        const apiKey = str('GROQ_API_KEY');
+        if (!apiKey) throw new Error('GROQ_API_KEY is not set');
+        client = new Groq({ apiKey });
+    }
+    return client;
+}
 
 /**
- * @param {GroqMessage[]} messages
- * @returns {Promise<string>}
+ * @param {GroqMessage[]} messages The system message must come first.
+ * @param {number} maxTokens
+ * @returns {Promise<string>} the assistant answer.
  */
-async function sendLLMRequest(messages, max_tokens = 1024) {
+async function sendLLMRequest(messages, maxTokens = 1024) {
+    const model = str('GROQ_MODEL', DEFAULT_MODEL);
+
     try {
-        const chatCompletion = await groq.chat.completions.create({
-            messages: messages.map(message => message.toObject()),
-            model: process.env.GROQ_MODEL,
+        const completion = await getClient().chat.completions.create({
+            messages: messages.map((message) => message.toObject()),
+            model,
             temperature: 0.7,
-            max_tokens: max_tokens,
-            stream: false
+            max_tokens: maxTokens,
+            stream: false,
         });
 
-        return chatCompletion.choices[0].message.content;
+        return completion.choices[0]?.message?.content ?? '';
     } catch (error) {
-        // Log specific Groq API errors with context
-        const context = {
-            messagesCount: messages.length,
-            maxTokens: max_tokens,
-            model: process.env.GROQ_MODEL
-        };
-
-        // Enhance error with more specific information
-        if (error.status === 429) {
-            const rateLimitError = new Error('Groq API rate limit exceeded');
-            rateLimitError.name = 'RateLimitError';
-            errorHandler.logError(rateLimitError, context, 'GROQ_API_ERROR');
-            throw rateLimitError;
-        } else if (error.status === 401) {
-            const authError = new Error('Groq API authentication failed');
-            authError.name = 'AuthenticationError';
-            errorHandler.logError(authError, context, 'GROQ_API_ERROR');
-            throw authError;
-        } else if (error.status >= 500) {
-            const serverError = new Error('Groq API server error');
-            serverError.name = 'NetworkError';
-            errorHandler.logError(serverError, context, 'GROQ_API_ERROR');
-            throw serverError;
-        } else {
-            errorHandler.logError(error, context, 'GROQ_API_ERROR');
-            throw new Error('Unable to contact Groq API');
-        }
+        throw describeGroqError(error, { messagesCount: messages.length, maxTokens, model });
     }
+}
+
+/** Turns an SDK error into a named error the user-facing layer can map. */
+function describeGroqError(error, context) {
+    const named = (name, message) => {
+        const wrapped = new Error(message);
+        wrapped.name = name;
+        return wrapped;
+    };
+
+    let result;
+    if (error.status === 429) {
+        result = named('RateLimitError', 'Groq API rate limit exceeded');
+    } else if (error.status === 401 || error.status === 403) {
+        result = named('AuthenticationError', 'Groq API authentication failed');
+    } else if (error.status >= 500) {
+        result = named('NetworkError', 'Groq API server error');
+    } else {
+        result = named('Error', `Unable to contact the Groq API: ${error.message}`);
+    }
+
+    errorHandler.logError(result, context, 'GROQ_API_ERROR');
+    return result;
+}
+
+/**
+ * Renders Discord messages as one delimited, clearly-labelled transcript.
+ * @param {Array<{ author: object, content: string }>} messages Oldest first.
+ * @param {number} maxCharacters Budget; the oldest messages are dropped first.
+ * @returns {{ transcript: string, used: number, dropped: number }}
+ */
+function buildTranscript(messages, maxCharacters) {
+    const lines = messages
+        .filter((message) => message.content?.trim())
+        .map((message) => `${message.author?.username ?? 'unknown'}: ${message.content.trim()}`);
+
+    let total = 0;
+    const kept = [];
+
+    // Walk backwards so the most recent messages survive the budget.
+    for (let index = lines.length - 1; index >= 0; index -= 1) {
+        const cost = lines[index].length + 1;
+        if (total + cost > maxCharacters) break;
+        total += cost;
+        kept.unshift(lines[index]);
+    }
+
+    return {
+        transcript: `${TRANSCRIPT_OPEN}\n${kept.join('\n')}\n${TRANSCRIPT_CLOSE}`,
+        used: kept.length,
+        dropped: lines.length - kept.length,
+    };
 }
 
 class GroqMessage {
@@ -55,28 +105,32 @@ class GroqMessage {
         this.role = role;
         this.content = content;
     }
+
     static user(content) {
-        return new GroqMessage("user", content);
+        return new GroqMessage('user', content);
     }
+
     static assistant(content) {
-        return new GroqMessage("assistant", content);
+        return new GroqMessage('assistant', content);
     }
+
     static system(content) {
-        return new GroqMessage("system", content);
+        return new GroqMessage('system', content);
     }
-    static fromDiscordMessage(message) {
-        const content = `${message.author.username}: ${message.content}`;
-        return GroqMessage.user(content);
-    }
+
     toObject() {
-        return {
-            role: this.role,
-            content: this.content
-        };
+        return { role: this.role, content: this.content };
     }
+
     toString() {
         return `${this.role}: ${this.content}`;
     }
 }
 
-module.exports = { sendLLMRequest, GroqMessage };
+module.exports = {
+    sendLLMRequest,
+    buildTranscript,
+    GroqMessage,
+    TRANSCRIPT_OPEN,
+    TRANSCRIPT_CLOSE,
+};

@@ -15,11 +15,15 @@ yarn-error.log*
 google-credentials.json
 
 # Logs
-logs
+logs/
 *.log
 
-# Config files
+# Runtime guild configuration (created by the bot on first start)
 configs/*
+!configs/.gitkeep
+
+# Local audit / scratch notes
+AUDIT.md
 
 # Runtime data
 pids
@@ -27,32 +31,16 @@ pids
 *.seed
 *.pid.lock
 
-# Coverage directory used by tools like istanbul
+# Test coverage
 coverage/
-
-# nyc test coverage
 .nyc_output
 
-# Dependency directories
-jspm_packages/
-
-# Optional npm cache directory
+# Caches
 .npm
-
-# Optional eslint cache
 .eslintcache
-
-# Optional REPL history
-.node_repl_history
 
 # Output of 'npm pack'
 *.tgz
-
-# Yarn Integrity file
-.yarn-integrity
-
-# dotenv environment variables file
-.env
 
 # IDE files
 .vscode/

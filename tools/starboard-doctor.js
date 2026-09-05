@@ -1,55 +1,57 @@
+#!/usr/bin/env node
 /**
- * Diagnostic du stockage starboard.
- * Usage (sur le serveur) : cd ~/bots/TLTR-Discord-Bot && node tools/starboard-doctor.js
+ * Starboard storage diagnostic.
+ *
+ * Usage on the server: cd ~/bots/TLTR-Discord-Bot && node tools/starboard-doctor.js
+ * Prints ownership and permissions of the config folders, then tries a write.
  */
-const fs = require("fs");
-const path = require("path");
+const fs = require('fs');
+const path = require('path');
 
-const CONFIG_DIR = path.join(__dirname, "..", "configs");
-const DIR = path.join(CONFIG_DIR, "starboards");
+const CONFIG_DIR = path.join(__dirname, '..', 'configs');
+const STARBOARD_DIR = path.join(CONFIG_DIR, 'starboards');
 
-function describe(p) {
+function describe(target) {
     try {
-        const st = fs.statSync(p);
-        return `mode=${(st.mode & 0o777).toString(8)} uid=${st.uid} gid=${st.gid}`;
-    } catch (e) {
-        return `ABSENT (${e.code})`;
+        const stats = fs.statSync(target);
+        return `mode=${(stats.mode & 0o777).toString(8)} uid=${stats.uid} gid=${stats.gid}`;
+    } catch (error) {
+        return `MISSING (${error.code})`;
     }
 }
 
-console.log("process uid/gid :", process.getuid?.(), process.getgid?.());
-console.log("cwd             :", process.cwd());
-console.log("configs/        :", CONFIG_DIR, "|", describe(CONFIG_DIR));
-console.log("starboards/     :", DIR, "|", describe(DIR));
+console.log('process uid/gid :', process.getuid?.(), process.getgid?.());
+console.log('cwd             :', process.cwd());
+console.log('configs/        :', CONFIG_DIR, '|', describe(CONFIG_DIR));
+console.log('starboards/     :', STARBOARD_DIR, '|', describe(STARBOARD_DIR));
 
-if (!fs.existsSync(DIR)) {
+if (!fs.existsSync(STARBOARD_DIR)) {
     try {
-        fs.mkdirSync(DIR, { recursive: true });
-        console.log("→ dossier créé");
-    } catch (e) {
-        console.log("→ ÉCHEC création :", e.code, e.message);
+        fs.mkdirSync(STARBOARD_DIR, { recursive: true });
+        console.log('-> directory created');
+    } catch (error) {
+        console.log('-> FAILED to create:', error.code, error.message);
         process.exit(1);
     }
 }
 
 try {
-    const probe = path.join(DIR, ".doctor");
-    fs.writeFileSync(probe, "ok");
-    try { fs.unlinkSync(probe); } catch (_) { }
-    console.log("écriture        : OK");
-} catch (e) {
-    console.log("écriture        : ÉCHEC ->", e.code, e.message);
-    console.log("  fix : sudo chown -R $USER", CONFIG_DIR, "&& chmod -R u+rwX", CONFIG_DIR);
+    const probe = path.join(STARBOARD_DIR, '.doctor');
+    fs.writeFileSync(probe, 'ok');
+    fs.unlinkSync(probe);
+    console.log('write test      : OK');
+} catch (error) {
+    console.log('write test      : FAILED ->', error.code, error.message);
+    console.log(`  fix: sudo chown -R $USER "${CONFIG_DIR}" && chmod -R u+rwX "${CONFIG_DIR}"`);
 }
 
-for (const f of fs.readdirSync(DIR).filter(n => n.endsWith(".json"))) {
-    const full = path.join(DIR, f);
-    let info = "";
+for (const file of fs.readdirSync(STARBOARD_DIR).filter((name) => name.endsWith('.json'))) {
+    const full = path.join(STARBOARD_DIR, file);
+    let summary;
     try {
-        const data = JSON.parse(fs.readFileSync(full, "utf8"));
-        info = `${Object.keys(data).length} entrée(s)`;
-    } catch (e) {
-        info = `ILLISIBLE (${e.message})`;
+        summary = `${Object.keys(JSON.parse(fs.readFileSync(full, 'utf8'))).length} entry/entries`;
+    } catch (error) {
+        summary = `UNREADABLE (${error.message})`;
     }
-    console.log(`  ${f} : ${info} | ${describe(full)}`);
+    console.log(`  ${file} : ${summary} | ${describe(full)}`);
 }

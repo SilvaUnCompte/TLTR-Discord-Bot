@@ -1,145 +1,150 @@
-const { PermissionFlagsBits } = require('discord.js');
+const {
+    SlashCommandBuilder,
+    PermissionFlagsBits,
+    MessageFlags,
+    InteractionContextType,
+    ChannelType,
+} = require('discord.js');
 const configManager = require('../utils/configManager');
+const { EMBED_COLOR } = require('../lib/constants');
+const { extractId } = require('../lib/snowflake');
 
-/**
- * View or modify guild configuration
- */
-async function config(interaction) {
-    const action = interaction.options.getString('action');
-    
-    // Check if user has admin permissions
-    if (!interaction.member.permissions.has(PermissionFlagsBits.Administrator)) {
-        return await interaction.reply({
-            content: '❌ You need Administrator permissions to manage bot configuration.',
-            ephemeral: true
-        });
-    }
+module.exports = {
+    data: new SlashCommandBuilder()
+        .setName('config')
+        .setDescription('View or modify the bot configuration')
+        .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
+        .setContexts(InteractionContextType.Guild)
+        .addSubcommand((sub) => sub.setName('view').setDescription('Show the current settings'))
+        .addSubcommand((sub) => sub.setName('list').setDescription('List the available settings'))
+        .addSubcommand((sub) =>
+            sub.setName('reset').setDescription('Reset every setting to its default')
+        )
+        .addSubcommand((sub) =>
+            sub
+                .setName('starboard-channel')
+                .setDescription('Set the channel starred messages are mirrored to')
+                .addChannelOption((option) =>
+                    option
+                        .setName('channel')
+                        .setDescription('Target channel (leave empty to disable)')
+                        .addChannelTypes(ChannelType.GuildText, ChannelType.GuildAnnouncement)
+                        .setRequired(false)
+                )
+        )
+        .addSubcommand((sub) =>
+            sub
+                .setName('starboard-threshold')
+                .setDescription('Set how many stars a message needs')
+                .addIntegerOption((option) =>
+                    option
+                        .setName('stars')
+                        .setDescription('Number of stars (1 or more)')
+                        .setMinValue(1)
+                        .setMaxValue(50)
+                        .setRequired(true)
+                )
+        ),
 
-    const guildId = interaction.guild.id;
+    async execute(interaction) {
+        // setDefaultMemberPermissions can be overridden per guild, so the check
+        // is repeated here rather than trusted.
+        if (!interaction.memberPermissions?.has(PermissionFlagsBits.Administrator)) {
+            await interaction.reply({
+                content: '❌ You need the Administrator permission to manage the configuration.',
+                flags: MessageFlags.Ephemeral,
+            });
+            return;
+        }
 
-    try {
-        switch (action) {
+        const guildId = interaction.guildId;
+
+        switch (interaction.options.getSubcommand()) {
             case 'view':
-                await viewConfig(interaction, guildId);
-                break;
-            case 'set':
-                await setConfig(interaction, guildId);
-                break;
-            case 'reset':
-                await resetConfig(interaction, guildId);
-                break;
+                return viewConfig(interaction, guildId);
             case 'list':
-                await listSettings(interaction);
-                break;
+                return listSettings(interaction);
+            case 'reset':
+                return applyChange(
+                    interaction,
+                    configManager.reset(guildId),
+                    'Settings reset to defaults.'
+                );
+            case 'starboard-channel': {
+                const channel = interaction.options.getChannel('channel');
+                const result = configManager.set(guildId, 'starboard.channel', channel?.id ?? '');
+                return applyChange(
+                    interaction,
+                    result,
+                    channel
+                        ? `Starboard channel set to ${channel}.`
+                        : 'Starboard disabled (no channel set).'
+                );
+            }
+            case 'starboard-threshold': {
+                const stars = interaction.options.getInteger('stars');
+                const result = configManager.set(guildId, 'starboard.threshold', stars);
+                return applyChange(
+                    interaction,
+                    result,
+                    `Starboard threshold set to ${stars} star(s).`
+                );
+            }
             default:
                 await interaction.reply({
-                    content: '❌ Invalid action.',
-                    ephemeral: true
+                    content: '❌ Unknown subcommand.',
+                    flags: MessageFlags.Ephemeral,
                 });
         }
-    } catch (error) {
-        console.error('Error in config command:', error);
-        await interaction.reply({
-            content: '❌ An error occurred while managing configuration.',
-            ephemeral: true
-        });
-    }
+    },
+};
+
+async function applyChange(interaction, result, successMessage) {
+    await interaction.reply({
+        content: result.success ? `✅ ${successMessage}` : `❌ ${result.reason}.`,
+        flags: result.success ? undefined : MessageFlags.Ephemeral,
+    });
 }
 
-/**
- * View current configuration
- */
 async function viewConfig(interaction, guildId) {
     const config = configManager.getGuildConfig(guildId);
-    console.log('Guild config:', config.starboard);
-    
-    const embed = {
-        color: 0x5865F2,
-        title: '⚙️ Guild Configuration',
-        fields: [
+    // Older configurations stored a mention rather than a bare ID.
+    const channelId = extractId(config.starboard.channel);
+
+    await interaction.reply({
+        embeds: [
             {
-                name: ':star: Starboard channel',
-                value: `${config.starboard.channel ? `${config.starboard.channel}` : 'Not set'}`,
-                inline: false
-            }
+                color: EMBED_COLOR,
+                title: '⚙️ Guild configuration',
+                fields: [
+                    {
+                        name: 'Starboard channel',
+                        value: channelId ? `<#${channelId}>` : 'Not set',
+                        inline: true,
+                    },
+                    {
+                        name: 'Starboard threshold',
+                        value: `${config.starboard.threshold} star(s)`,
+                        inline: true,
+                    },
+                ],
+                footer: { text: 'Use /config starboard-channel or /config starboard-threshold' },
+            },
         ],
-        footer: {
-            text: 'Use `/config set` to modify settings'
-        }
-    };
-
-    await interaction.reply({ embeds: [embed], ephemeral: false });
+    });
 }
 
-/**
- * Set a configuration value
- */
-async function setConfig(interaction, guildId) {
-    const setting = interaction.options.getString('setting');
-    const value = interaction.options.getString('value');
-
-    // Parse value (cast int/bool if possible)
-    let parsedValue = value;
-    if (!isNaN(value)) {
-        parsedValue = Number(value);
-    } else if (value === 'true') {
-        parsedValue = true;
-    } else if (value === 'false') {
-        parsedValue = false;
-    }
-
-    const success = configManager.set(guildId, setting, parsedValue);
-
-    if (success) {
-        await interaction.reply({
-            content: `✅ Successfully set \`${setting}\` to \`${parsedValue}\``,
-            ephemeral: false
-        });
-    } else {
-        await interaction.reply({
-            content: `❌ Failed to set \`${setting}\`. Make sure the setting path is valid.`,
-            ephemeral: false
-        });
-    }
-}
-
-/**
- * Reset configuration to defaults
- */
-async function resetConfig(interaction, guildId) {
-    const success = configManager.reset(guildId);
-
-    if (success) {
-        await interaction.reply({
-            content: '✅ Successfully reset all settings to defaults.',
-            ephemeral: false
-        });
-    } else {
-        await interaction.reply({
-            content: '❌ Failed to reset configuration.',
-            ephemeral: false
-        });
-    }
-}
-
-/**
- * List all available settings
- */
 async function listSettings(interaction) {
-    const settings = configManager.getAvailableSettings();
-    
-    const settingsList = settings.map(s => `• \`${s}\``).join('\n');
-    
-    const embed = {
-        color: 0x5865F2,
-        title: '📋 Available Settings',
-        description: settingsList,
-        footer: {
-            text: 'Use `/config set <setting> <value>` to modify'
-        }
-    };
-
-    await interaction.reply({ embeds: [embed], ephemeral: false });
+    await interaction.reply({
+        embeds: [
+            {
+                color: EMBED_COLOR,
+                title: '📋 Available settings',
+                description: configManager
+                    .getAvailableSettings()
+                    .map((setting) => `- \`${setting}\``)
+                    .join('\n'),
+            },
+        ],
+    });
 }
-
-module.exports = { config };

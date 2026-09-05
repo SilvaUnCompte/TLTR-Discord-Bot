@@ -1,56 +1,58 @@
-const errorHandler = require("../utils/errorHandler");
+const { SlashCommandBuilder, MessageFlags } = require('discord.js');
+const errorHandler = require('../utils/errorHandler');
+const logger = require('../lib/logger');
 
-async function debuginfo(interaction) {
-    try {
-        await interaction.deferReply({ ephemeral: true });
+module.exports = {
+    data: new SlashCommandBuilder()
+        .setName('debuginfo')
+        .setDescription('Show bot error statistics and debug information'),
 
-        // Get error statistics
+    async execute(interaction) {
+        await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+
         const stats = errorHandler.getErrorStats();
-        
         if (!stats) {
-            await interaction.editReply({
-                content: "❌ Unable to get error statistics."
-            });
+            await interaction.editReply('❌ Unable to read the error statistics.');
             return;
         }
 
-        // Format statistics
-        let statsMessage = "📊 **Bot Error Statistics**\n\n";
-        statsMessage += `📁 **Log Files:** ${stats.totalFiles} total, ${stats.todayFiles} today\n\n`;
-        
-        if (Object.keys(stats.errorTypes).length > 0) {
-            statsMessage += "📝 **Error Types:**\n";
-            Object.entries(stats.errorTypes)
-                .sort(([,a], [,b]) => b - a) // Sort by number of occurrences
-                .forEach(([type, count]) => {
-                    statsMessage += `• ${type}: ${count} file${count > 1 ? 's' : ''}\n`;
-                });
+        const lines = [
+            '📊 **Bot error statistics**',
+            '',
+            `📁 **Log files:** ${stats.totalFiles} total, ${stats.todayFiles} today`,
+            '',
+        ];
+
+        const types = Object.entries(stats.errorTypes).sort(([, a], [, b]) => b - a);
+        if (types.length > 0) {
+            lines.push('📝 **Error types:**');
+            for (const [type, count] of types) {
+                lines.push(`- ${type}: ${count} file${count > 1 ? 's' : ''}`);
+            }
         } else {
-            statsMessage += "✅ **No error files detected**\n";
+            lines.push('✅ **No error files detected**');
         }
 
-        statsMessage += "\n🔍 **Bot Status:**\n";
-        statsMessage += `• Uptime: ${Math.floor(process.uptime())} seconds\n`;
-        statsMessage += `• Memory used: ${Math.round(process.memoryUsage().heapUsed / 1024 / 1024)} MB\n`;
-        statsMessage += `• Node.js version: ${process.version}\n`;
+        const memoryMb = Math.round(process.memoryUsage().heapUsed / 1024 / 1024);
+        lines.push(
+            '',
+            '🔍 **Bot status:**',
+            `- Uptime: ${formatUptime(process.uptime())}`,
+            `- Memory used: ${memoryMb} MB`,
+            `- Node.js: ${process.version}`,
+            `- Log level: ${logger.level}`
+        );
 
-        await interaction.editReply({
-            content: statsMessage
-        });
+        await interaction.editReply(lines.join('\n'));
+        logger.info(`📊 ${interaction.user.tag} requested debug info`);
+    },
+};
 
-        console.log(`📊 ${interaction.user.tag} requested debug info`);
+/** @param {number} seconds @returns {string} e.g. "3d 4h 12m" */
+function formatUptime(seconds) {
+    const days = Math.floor(seconds / 86400);
+    const hours = Math.floor((seconds % 86400) / 3600);
+    const minutes = Math.floor((seconds % 3600) / 60);
 
-    } catch (error) {
-        console.error('Error in debuginfo command:', error);
-        
-        const errorMessage = "❌ An error occurred while retrieving debug information.";
-        
-        if (interaction.deferred) {
-            await interaction.editReply({ content: errorMessage });
-        } else {
-            await interaction.reply({ content: errorMessage, ephemeral: true });
-        }
-    }
+    return [days && `${days}d`, hours && `${hours}h`, `${minutes}m`].filter(Boolean).join(' ');
 }
-
-module.exports = { debuginfo };

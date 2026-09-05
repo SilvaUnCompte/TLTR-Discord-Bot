@@ -1,84 +1,88 @@
-const { getAuthClient } = require("../utils/googleAuth");
-const { optimizeAudioBuffer } = require("../utils/audioOptimizer");
-const { SAMPLE_RATE } = require("../utils/audioAnalyzer");
-const fetch = require('node-fetch');
-require('dotenv').config();
+/**
+ * Google Speech-to-Text, called over REST.
+ *
+ * The official client library is not used on purpose: the request is a single
+ * synchronous recognize call, and the REST payload is easier to tune. Node's
+ * global fetch is used, so no HTTP dependency is needed.
+ */
+const { getAccessToken } = require('../utils/googleAuth');
+const { optimizeAudioBuffer } = require('../utils/audioOptimizer');
+const { SAMPLE_RATE } = require('../utils/audioAnalyzer');
+const logger = require('../lib/logger');
+const { int, str } = require('../lib/env');
 
-const STT_API_URL = "https://speech.googleapis.com/v1/speech:recognize";
+const STT_API_URL = 'https://speech.googleapis.com/v1/speech:recognize';
 
+/**
+ * @param {Buffer} audioBuffer Interleaved stereo 16-bit PCM as captured.
+ * @returns {Promise<string|null>} the transcript, or null when nothing usable came back.
+ */
 async function sendSTTRequest(audioBuffer) {
     try {
-        // Optimize audio buffer (reduce size if needed)
-        const optimizedBuffer = optimizeAudioBuffer(audioBuffer);
-        
-        // Convert buffer to base64 for Google API
-        const base64Audio = optimizedBuffer.toString('base64');
+        const optimized = optimizeAudioBuffer(audioBuffer);
 
-        // Get OAuth2 access token
-        const client = getAuthClient();
-        const accessToken = await client.getAccessToken();
-
-        const requestPayload = {
+        const payload = {
             config: {
-                encoding: "LINEAR16",
+                encoding: 'LINEAR16',
                 sampleRateHertz: SAMPLE_RATE,
-                languageCode: "fr-FR",
-                alternativeLanguageCodes: ["en-US", "en-GB"],
-                audioChannelCount: 1, // Mono for better performance
-                // Performance optimizations
+                languageCode: str('STT_LANGUAGE', 'fr-FR'),
+                alternativeLanguageCodes: ['en-US', 'en-GB'],
+                audioChannelCount: 1,
                 enableAutomaticPunctuation: true,
-                enableWordTimeOffsets: false, // Reduces response size
-                model: "latest_short", // Optimized for short audio
-                useEnhanced: true, // Better accuracy
-                // Profanity filtering
-                profanityFilter: false
+                enableWordTimeOffsets: false,
+                model: 'latest_short',
+                useEnhanced: true,
+                profanityFilter: false,
             },
-            audio: { content: base64Audio }
+            audio: { content: optimized.toString('base64') },
         };
 
-        console.log('🚀 Sending optimized STT request with audio size:', optimizedBuffer.length, 'bytes (original:', audioBuffer.length, 'bytes)');
+        logger.debug(
+            `🚀 STT request: ${optimized.length} bytes (from ${audioBuffer.length} bytes)`
+        );
 
-        const response = await fetch(STT_API_URL, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${accessToken.token}`
-            },
-            body: JSON.stringify(requestPayload)
-        });
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), int('STT_TIMEOUT', 15000));
 
-        const responseText = await response.text();
-        let sttResponse;
-
+        let response;
         try {
-            sttResponse = JSON.parse(responseText);
-        } catch (e) {
-            console.warn("JSON parsing error:", e);
-            console.warn("Response text:", responseText);
+            response = await fetch(STT_API_URL, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    Authorization: `Bearer ${await getAccessToken()}`,
+                },
+                body: JSON.stringify(payload),
+                signal: controller.signal,
+            });
+        } finally {
+            clearTimeout(timeout);
+        }
+
+        const body = await response.json().catch(() => null);
+
+        if (!response.ok || body?.error) {
+            logger.error(
+                `❌ Google STT API error (${response.status}): ${body?.error?.message ?? 'unknown'}`
+            );
             return null;
         }
 
-        if (sttResponse.error) {
-            console.error("Google STT API error:", sttResponse.error);
+        const alternative = body?.results?.[0]?.alternatives?.[0];
+        if (!alternative?.transcript) {
+            logger.debug('🔇 No transcription in the STT response');
             return null;
         }
 
-        if (sttResponse.results && sttResponse.results.length > 0 &&
-            sttResponse.results[0].alternatives && sttResponse.results[0].alternatives.length > 0) {
-            const transcript = sttResponse.results[0].alternatives[0].transcript;
-            const confidence = sttResponse.results[0].alternatives[0].confidence || 0;
-            
-            console.log(`📝 Transcript (confidence: ${(confidence * 100).toFixed(1)}%):`, transcript);
-                        
-            return transcript;
-        } else {
-            console.warn("No transcription found in the STT response");
-            console.log("Full response:", JSON.stringify(sttResponse, null, 2));
-            return null;
-        }
-
+        const confidence = ((alternative.confidence ?? 0) * 100).toFixed(1);
+        logger.info(`📝 Transcript (confidence ${confidence}%): ${alternative.transcript}`);
+        return alternative.transcript;
     } catch (error) {
-        console.error('Error in sendSTTRequest:', error);
+        if (error.name === 'AbortError') {
+            logger.error('❌ STT request timed out');
+        } else {
+            logger.error(`❌ Error in sendSTTRequest: ${error.message}`);
+        }
         return null;
     }
 }

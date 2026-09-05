@@ -1,136 +1,118 @@
-require('dotenv').config();
+/**
+ * Audio analysis helpers for the voice copilot.
+ *
+ * Every function works on raw signed 16-bit little-endian PCM. The number of
+ * interleaved channels matters for the duration maths, so it is always passed
+ * explicitly instead of being assumed to be mono.
+ */
+const { int, float } = require('../lib/env');
+const logger = require('../lib/logger');
 
-const SAMPLE_RATE = 48000; // Discord audio sample rate
+/** Discord delivers Opus that decodes to 48 kHz. */
+const SAMPLE_RATE = 48000;
+
+/** The receiver decodes to stereo; the STT payload is downmixed later. */
+const CAPTURE_CHANNELS = 2;
+
+const BYTES_PER_SAMPLE = 2;
 
 /**
- * Calculate RMS (Root Mean Square) value of audio buffer
- * Higher RMS indicates louder audio
- * @param {Buffer} buffer - Audio buffer
- * @returns {number} RMS value
+ * @param {Buffer} buffer 16-bit PCM.
+ * @returns {number} RMS amplitude; higher means louder.
  */
 function calculateRMS(buffer) {
+    const sampleCount = Math.floor(buffer.length / BYTES_PER_SAMPLE);
+    if (sampleCount === 0) return 0;
+
     let sum = 0;
-    const samples = buffer.length / 2; // 16-bit samples
-    
-    for (let i = 0; i < buffer.length; i += 2) {
-        const sample = buffer.readInt16LE(i);
+    for (let offset = 0; offset + 1 < buffer.length; offset += BYTES_PER_SAMPLE) {
+        const sample = buffer.readInt16LE(offset);
         sum += sample * sample;
     }
-    
-    return Math.sqrt(sum / samples);
+    return Math.sqrt(sum / sampleCount);
 }
 
 /**
- * Check if audio buffer contains significant speech content
- * @param {Buffer} buffer - Audio buffer to analyze
- * @param {number} minVolume - Minimum RMS threshold
- * @param {number} minDuration - Minimum duration in milliseconds
- * @returns {boolean} True if audio has significant content
+ * @param {number} byteLength
+ * @param {number} channels Number of interleaved channels in the buffer.
+ * @returns {number} duration in milliseconds.
  */
-function hasSignificantAudio(buffer, minVolume, minDuration) {
-    const rms = calculateRMS(buffer);
-    const durationMs = (buffer.length / 2) / (SAMPLE_RATE / 1000);
-    
-    console.log(`🔊 Audio analysis: RMS=${rms.toFixed(0)}, Duration=${durationMs.toFixed(0)}ms`);
-    
-    return rms > minVolume && durationMs > minDuration;
+function durationMs(byteLength, channels = CAPTURE_CHANNELS) {
+    const frames = byteLength / (BYTES_PER_SAMPLE * channels);
+    return (frames / SAMPLE_RATE) * 1000;
 }
 
-/**
- * Remove leading silence from audio chunks
- * Keeps some context before speech starts
- * @param {Buffer[]} chunks - Array of audio chunks
- * @returns {Buffer[]} Cleaned audio chunks without leading silence
- */
-function removeLeadingSilence(chunks) {
-    const minVolumeThreshold = parseFloat(process.env.MIN_VOLUME_THRESHOLD) || 500;
-    let startIndex = 0;
-    
-    // Find first chunk with significant audio
-    for (let i = 0; i < chunks.length; i++) {
-        const rms = calculateRMS(chunks[i]);
-        if (rms > minVolumeThreshold) {
-            startIndex = i;
-            break;
-        }
-    }
-    
-    // Keep some context before speech starts (2 chunks)
-    const contextChunks = Math.max(0, startIndex - 2);
-    return chunks.slice(contextChunks);
-}
-
-/**
- * Validate audio buffer with multiple security checks
- * @param {Buffer} audioBuffer - Combined audio buffer
- * @param {number} recordingDuration - Duration of recording in milliseconds
- * @param {string} userId - User ID for logging
- * @returns {Object} Validation result with success status and reason
- */
-function validateAudioQuality(audioBuffer, recordingDuration) {
-    // Get security thresholds from environment
-    const minDuration = parseInt(process.env.MIN_SPEECH_DURATION) || 800; // ms
-    const minVolume = parseFloat(process.env.MIN_VOLUME_THRESHOLD) || 500; // RMS value
-    const bufferThreshold = parseInt(process.env.BUFFER_THRESHOLD) || 5000; // bytes
-
-    // Security Check 1: Buffer size
-    if (audioBuffer.length < bufferThreshold) {
-        return {
-            success: false,
-            reason: `Audio buffer too small: ${audioBuffer.length} < ${bufferThreshold} bytes`
-        };
-    }
-
-    // Security Check 2: Recording duration
-    if (recordingDuration < minDuration) {
-        return {
-            success: false,
-            reason: `Recording too short: ${recordingDuration}ms < ${minDuration}ms`
-        };
-    }
-
-    // Security Check 3: Audio volume analysis
-    if (!hasSignificantAudio(audioBuffer, minVolume, minDuration)) {
-        return {
-            success: false,
-            reason: 'Audio quality insufficient (volume/duration check failed)'
-        };
-    }
-
-    return {
-        success: true,
-        reason: 'Audio passed all security checks'
-    };
-}
-
-/**
- * Get audio configuration from environment variables
- * @returns {Object} Audio configuration object
- */
+/** @returns {object} the audio thresholds, read from the environment. */
 function getAudioConfig() {
     return {
         sampleRate: SAMPLE_RATE,
-        minDuration: parseInt(process.env.MIN_SPEECH_DURATION) || 800,
-        minVolume: parseFloat(process.env.MIN_VOLUME_THRESHOLD) || 500,
-        bufferThreshold: parseInt(process.env.BUFFER_THRESHOLD) || 5000,
-        silenceDuration: parseInt(process.env.SILENCE_DURATION) || 1500
+        channels: CAPTURE_CHANNELS,
+        minDuration: int('MIN_SPEECH_DURATION', 800),
+        minVolume: float('MIN_VOLUME_THRESHOLD', 500),
+        bufferThreshold: int('BUFFER_THRESHOLD', 5000),
+        silenceDuration: int('SILENCE_DURATION', 1500),
+        maxRecordingDuration: int('MAX_RECORDING_DURATION', 30000),
     };
 }
 
 /**
- * Analyze audio chunks and provide detailed statistics
- * @param {Buffer[]} chunks - Array of audio chunks
- * @returns {Object} Audio analysis statistics
+ * Drops the silence before the first audible chunk, keeping a little context.
+ * When nothing crosses the threshold the input is returned untouched: deciding
+ * that it is silence is the caller's job, through validateAudioQuality.
+ * @param {Buffer[]} chunks
+ * @returns {Buffer[]}
  */
-function analyzeAudioChunks(chunks) {
-    if (chunks.length === 0) {
+function removeLeadingSilence(chunks) {
+    const { minVolume } = getAudioConfig();
+    const firstAudible = chunks.findIndex((chunk) => calculateRMS(chunk) > minVolume);
+    if (firstAudible <= 0) return chunks;
+
+    const CONTEXT_CHUNKS = 2;
+    return chunks.slice(Math.max(0, firstAudible - CONTEXT_CHUNKS));
+}
+
+/**
+ * Rejects buffers that are too small, too short or too quiet to be speech.
+ * @param {Buffer} audioBuffer Interleaved PCM as captured.
+ * @param {number} channels Number of channels in `audioBuffer`.
+ * @returns {{ success: boolean, reason: string }}
+ */
+function validateAudioQuality(audioBuffer, channels = CAPTURE_CHANNELS) {
+    const { minDuration, minVolume, bufferThreshold } = getAudioConfig();
+
+    if (audioBuffer.length < bufferThreshold) {
         return {
-            totalChunks: 0,
-            totalBytes: 0,
-            averageRMS: 0,
-            peakRMS: 0,
-            estimatedDuration: 0
+            success: false,
+            reason: `Audio buffer too small: ${audioBuffer.length} < ${bufferThreshold} bytes`,
         };
+    }
+
+    const duration = durationMs(audioBuffer.length, channels);
+    if (duration < minDuration) {
+        return {
+            success: false,
+            reason: `Speech too short: ${duration.toFixed(0)}ms < ${minDuration}ms`,
+        };
+    }
+
+    const rms = calculateRMS(audioBuffer);
+    logger.debug(`🔊 Audio analysis: RMS=${rms.toFixed(0)}, duration=${duration.toFixed(0)}ms`);
+
+    if (rms <= minVolume) {
+        return { success: false, reason: `Audio too quiet: RMS ${rms.toFixed(0)} <= ${minVolume}` };
+    }
+
+    return { success: true, reason: 'Audio passed all checks' };
+}
+
+/**
+ * @param {Buffer[]} chunks
+ * @param {number} channels
+ * @returns {object} statistics used for the debug log line.
+ */
+function analyzeAudioChunks(chunks, channels = CAPTURE_CHANNELS) {
+    if (chunks.length === 0) {
+        return { totalChunks: 0, totalBytes: 0, averageRMS: 0, peakRMS: 0, estimatedDuration: 0 };
     }
 
     let totalBytes = 0;
@@ -149,16 +131,17 @@ function analyzeAudioChunks(chunks) {
         totalBytes,
         averageRMS: totalRMS / chunks.length,
         peakRMS,
-        estimatedDuration: (totalBytes / 2) / (SAMPLE_RATE / 1000) // ms
+        estimatedDuration: durationMs(totalBytes, channels),
     };
 }
 
 module.exports = {
     calculateRMS,
-    hasSignificantAudio,
+    durationMs,
     removeLeadingSilence,
     validateAudioQuality,
     getAudioConfig,
     analyzeAudioChunks,
-    SAMPLE_RATE
+    SAMPLE_RATE,
+    CAPTURE_CHANNELS,
 };

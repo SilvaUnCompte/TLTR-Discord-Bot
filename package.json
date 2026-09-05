@@ -1,33 +1,48 @@
 {
-  "name": "tltd-discord-bot",
-  "version": "1.0.0",
-  "description": "Useless bot made by Silvathor eheh",
-  "main": "index.js",
-  "scripts": {
-    "start": "node index.js",
-    "dev": "node index.js",
-    "deploy-commands": "node deploy-commands.js"
-  },
-  "keywords": [
-    "discord",
-    "bot",
-    "slash-commands"
-  ],
-  "author": "",
-  "license": "CC BY-NC-SA 4.0",
-  "dependencies": {
-    "@discordjs/voice": "^0.19.0",
-    "@google-cloud/speech": "^7.2.0",
-    "@snazzah/davey": "^0.1.7",
-    "discord.js": "^14.14.1",
-    "dotenv": "^16.3.1",
-    "groq-sdk": "^0.33.0",
-    "libsodium-wrappers": "^0.7.15",
-    "opusscript": "^0.0.8",
-    "pm2": "^6.0.13",
-    "prism-media": "^1.3.5"
-  },
-  "engines": {
-    "node": ">=16.9.0"
-  }
+    "name": "tltr-discord-bot",
+    "version": "1.0.0",
+    "description": "Discord bot with AI summaries, voice transcription and a starboard",
+    "main": "index.js",
+    "scripts": {
+        "start": "node index.js",
+        "deploy-commands": "node deploy-commands.js",
+        "lint": "eslint .",
+        "lint:fix": "eslint . --fix",
+        "format": "prettier --write .",
+        "format:check": "prettier --check .",
+        "check:style": "node tools/check-style.js",
+        "check": "npm run lint && npm run format:check && npm run check:style",
+        "doctor": "node tools/starboard-doctor.js"
+    },
+    "keywords": [
+        "discord",
+        "bot",
+        "slash-commands",
+        "ai",
+        "starboard"
+    ],
+    "author": "Silvathor",
+    "license": "CC BY-NC-SA 4.0",
+    "dependencies": {
+        "@discordjs/voice": "^0.19.0",
+        "@snazzah/davey": "^0.1.7",
+        "discord.js": "^14.14.1",
+        "dotenv": "^16.3.1",
+        "google-auth-library": "^10.4.0",
+        "groq-sdk": "^0.33.0",
+        "libsodium-wrappers": "^0.7.15",
+        "opusscript": "^0.0.8",
+        "prism-media": "^1.3.5"
+    },
+    "engines": {
+        "node": ">=20.0.0"
+    },
+    "devDependencies": {
+        "@eslint/js": "^10.0.1",
+        "eslint": "^10.10.0",
+        "eslint-config-prettier": "^10.1.8",
+        "globals": "^17.12.0",
+        "prettier": "^3.9.6"
+    },
+    "private": true
 }
