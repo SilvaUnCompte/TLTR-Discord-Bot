@@ -1,0 +1,10 @@
+# Normalize line endings across the repository.
+# Everything is stored as LF in git; checkout is left to the platform default.
+* text=auto eol=lf
+
+*.sh  text eol=lf
+*.bat text eol=crlf
+*.cmd text eol=crlf
+
+# Binary / generated
+package-lock.json -diff
