@@ -1,254 +1,210 @@
+/**
+ * Error logging and user-facing error replies.
+ *
+ * Errors go to the console through the shared logger and to a dated file under
+ * logs/, one file per severity. Retention and file size come from the
+ * environment (MAX_LOG_DAYS, MAX_LOG_FILE_SIZE).
+ */
 const fs = require('fs');
 const path = require('path');
+const { MessageFlags } = require('discord.js');
+const logger = require('../lib/logger');
+const { int } = require('../lib/env');
 
-/**
- * Provides comprehensive error logging and management
- */
+const SEPARATOR = '='.repeat(80);
+
 class ErrorHandler {
     constructor() {
         this.logDir = path.join(__dirname, '..', 'logs');
         this.ensureLogDirectory();
     }
 
-    /**
-     * Ensure logs directory exists
-     */
     ensureLogDirectory() {
-        if (!fs.existsSync(this.logDir)) {
-            fs.mkdirSync(this.logDir, { recursive: true });
-            console.log('Created logs directory');
+        try {
+            if (!fs.existsSync(this.logDir)) {
+                fs.mkdirSync(this.logDir, { recursive: true });
+                logger.info('📁 Created logs directory');
+            }
+            return true;
+        } catch (error) {
+            logger.error(`❌ Cannot create the logs directory: ${error.message}`);
+            return false;
         }
     }
 
-    /**
-     * Get current timestamp for logging
-     */
-    getTimestamp() {
-        return new Date().toISOString();
-    }
-
-    /**
-     * Format error message for logging
-     */
     formatError(error, context = {}) {
-        const timestamp = this.getTimestamp();
-        const errorInfo = {
+        const timestamp = new Date().toISOString();
+        const info = {
             timestamp,
+            name: error.name || 'Error',
             message: error.message || 'Unknown error',
             stack: error.stack || 'No stack trace available',
-            name: error.name || 'Error',
-            context
+            context,
         };
 
-        return {
-            logEntry: `[${timestamp}] ${errorInfo.name}: ${errorInfo.message}\nStack: ${errorInfo.stack}\nContext: ${JSON.stringify(context, null, 2)}\n${'='.repeat(80)}\n`,
-            errorInfo
-        };
+        const entry = [
+            `[${timestamp}] ${info.name}: ${info.message}`,
+            `Stack: ${info.stack}`,
+            `Context: ${JSON.stringify(context, null, 2)}`,
+            `${SEPARATOR}\n`,
+        ].join('\n');
+
+        return { entry, info };
     }
 
-    /**
-     * Write error to log file
-     */
-    writeToLogFile(logEntry, errorType = 'general') {
-        const date = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
-        const filename = `${errorType}-${date}.log`;
-        const filepath = path.join(this.logDir, filename);
+    /** Rotates the file once it exceeds MAX_LOG_FILE_SIZE megabytes (0 disables). */
+    rotateIfNeeded(filepath) {
+        const maxMegabytes = int('MAX_LOG_FILE_SIZE', 10);
+        if (maxMegabytes <= 0) return;
 
         try {
-            fs.appendFileSync(filepath, logEntry);
+            if (!fs.existsSync(filepath)) return;
+            if (fs.statSync(filepath).size < maxMegabytes * 1024 * 1024) return;
+
+            const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+            fs.renameSync(filepath, `${filepath}.${stamp}`);
+        } catch (error) {
+            logger.warn(`⚠️ Could not rotate ${filepath}: ${error.message}`);
+        }
+    }
+
+    writeToLogFile(entry, errorType = 'general') {
+        const date = new Date().toISOString().split('T')[0];
+        const filepath = path.join(this.logDir, `${errorType}-${date}.log`);
+
+        try {
+            this.rotateIfNeeded(filepath);
+            fs.appendFileSync(filepath, entry);
         } catch (writeError) {
-            console.error('❌ Failed to write to log file:', writeError.message);
+            logger.error(`❌ Failed to write to log file: ${writeError.message}`);
         }
     }
 
     /**
-     * Log error with different severity levels
+     * @param {Error} error
+     * @param {object} context Free-form details attached to the log entry.
+     * @param {string} severity Also used as the log file prefix.
      */
     logError(error, context = {}, severity = 'ERROR') {
-        const { logEntry, errorInfo } = this.formatError(error, context);
+        const { entry, info } = this.formatError(error, context);
 
-        // Console output with colors
-        console.error(`🔴 [${severity}] ${errorInfo.name}: ${errorInfo.message}`);
-        if (context.command) {
-            console.error(`📝 Command: ${context.command}`);
-        }
-        if (context.user) {
-            console.error(`👤 User: ${context.user}`);
-        }
-        if (context.guild) {
-            console.error(`🏰 Guild: ${context.guild}`);
-        }
+        logger.error(`🔴 [${severity}] ${info.name}: ${info.message}`);
+        if (context.command) logger.error(`📝 Command: ${context.command}`);
+        if (context.user) logger.error(`👤 User: ${context.user}`);
+        if (context.guild) logger.error(`🏰 Guild: ${context.guild}`);
 
-        // Write to appropriate log file
-        const logType = severity.toLowerCase();
-        this.writeToLogFile(logEntry, logType);
-
-        return errorInfo;
+        this.writeToLogFile(entry, severity.toLowerCase());
+        return info;
     }
 
-    /**
-     * Handle Discord interaction errors
-     */
+    /** Logs the error and answers the interaction with a readable message. */
     async handleInteractionError(interaction, error, context = {}) {
-        const errorContext = {
-            ...context,
-            command: interaction.commandName,
-            user: `${interaction.user.tag} (${interaction.user.id})`,
-            guild: interaction.guild ? `${interaction.guild.name} (${interaction.guild.id})` : 'DM',
-            channel: interaction.channel ? `#${interaction.channel.name} (${interaction.channel.id})` : 'Unknown'
-        };
+        this.logError(
+            error,
+            {
+                ...context,
+                command: interaction.commandName,
+                user: `${interaction.user.tag} (${interaction.user.id})`,
+                guild: interaction.guild
+                    ? `${interaction.guild.name} (${interaction.guild.id})`
+                    : 'DM',
+                channel: interaction.channel?.name
+                    ? `#${interaction.channel.name} (${interaction.channelId})`
+                    : String(interaction.channelId),
+            },
+            'INTERACTION_ERROR'
+        );
 
-        this.logError(error, errorContext, 'INTERACTION_ERROR');
-
-        // Send user-friendly error message
-        const errorMessage = this.getUserFriendlyMessage(error);
+        const message = this.getUserFriendlyMessage(error);
 
         try {
-            if (interaction.replied || interaction.deferred) {
-                await interaction.followUp({ 
-                    content: errorMessage, 
-                    ephemeral: true 
-                });
+            if (interaction.deferred || interaction.replied) {
+                await interaction.followUp({ content: message, flags: MessageFlags.Ephemeral });
             } else {
-                await interaction.reply({ 
-                    content: errorMessage, 
-                    ephemeral: true 
-                });
+                await interaction.reply({ content: message, flags: MessageFlags.Ephemeral });
             }
         } catch (replyError) {
-            console.error('🔴 Failed to send error message to user:', replyError.message);
+            logger.error(`🔴 Failed to send the error message to the user: ${replyError.message}`);
             this.logError(replyError, { originalError: error.message }, 'REPLY_ERROR');
         }
     }
 
-    /**
-     * Generate user-friendly error messages
-     */
+    /** @returns {string} a message that is safe to show to a Discord user. */
     getUserFriendlyMessage(error) {
-        const errorType = error.name || 'Error';
-        const baseMessage = '❌ An error occurred while executing this command.';
-
-        // Specific error messages for common issues
-        const errorMessages = {
-            'DiscordAPIError': '🔗 Connection error with Discord. Please try again in a few moments.',
-            'TimeoutError': '⏰ The operation took too long. Please try again.',
-            'ValidationError': '📝 The provided data is not valid.',
-            'AuthenticationError': '🔐 Authentication problem with external services.',
-            'NetworkError': '🌐 Network connection problem. Check your connection.',
-            'RateLimitError': '🚫 Too many requests. Please wait before trying again.',
-            'PermissionError': '🚫 The bot does not have the necessary permissions for this action.'
+        const messages = {
+            DiscordAPIError: '🔗 Connection error with Discord. Please try again in a few moments.',
+            TimeoutError: '⏰ The operation took too long. Please try again.',
+            ValidationError: '📝 The provided data is not valid.',
+            AuthenticationError: '🔐 Authentication problem with an external service.',
+            NetworkError: '🌐 Network connection problem.',
+            RateLimitError: '🚫 Too many requests. Please wait before trying again.',
+            PermissionError: '🚫 The bot lacks the permissions required for this action.',
         };
-
-        return errorMessages[errorType] || baseMessage;
+        return messages[error.name] || '❌ An error occurred while executing this command.';
     }
 
-    /**
-     * Handle Discord client errors
-     */
     handleClientError(error, context = {}) {
         this.logError(error, context, 'CLIENT_ERROR');
-
-        // Don't restart the bot for minor errors
-        const criticalErrors = ['ENOTFOUND', 'ECONNRESET', 'WEBSOCKET_ERROR'];
-        const isCritical = criticalErrors.some(criticalError => 
-            error.message?.includes(criticalError) || error.code === criticalError
-        );
-
-        if (isCritical) {
-            console.error('🔴 Critical client error detected. Bot may need restart.');
-            // TODO: automatic restart logic here if needed
-        }
     }
 
-    /**
-     * Handle unhandled promise rejections
-     */
-    handleUnhandledRejection(reason, promise) {
+    handleUnhandledRejection(reason) {
         const error = reason instanceof Error ? reason : new Error(String(reason));
-        
-        this.logError(error, { 
-            type: 'UNHANDLED_REJECTION',
-            promise: promise.toString()
-        }, 'CRITICAL');
-
-        console.error('🔴 CRITICAL: Unhandled Promise Rejection detected!');
-        
-        // Log additional debugging info
-        if (reason?.stack) {
-            console.error('Stack trace:', reason.stack);
-        }
+        this.logError(error, { type: 'UNHANDLED_REJECTION' }, 'CRITICAL');
+        logger.fatal('🔴 CRITICAL: unhandled promise rejection');
     }
 
-    /**
-     * Handle uncaught exceptions
-     */
+    /** Logs, then lets the process die so PM2 can restart it cleanly. */
     handleUncaughtException(error) {
         this.logError(error, { type: 'UNCAUGHT_EXCEPTION' }, 'FATAL');
-        
-        console.error('🔴 FATAL: Uncaught Exception detected!');
-        console.error('The bot will attempt graceful shutdown...');
+        logger.fatal('🔴 FATAL: uncaught exception, shutting down');
 
-        // Allow time for logs to be written
-        setTimeout(() => {
-            process.exit(1);
-        }, 1000);
+        setTimeout(() => process.exit(1), 1000).unref();
     }
 
-    /**
-     * Clean up old log files (keep last 30 days)
-     */
+    /** Deletes log files older than MAX_LOG_DAYS. */
     cleanupOldLogs() {
-        const maxAge = 30 * 24 * 60 * 60 * 1000; // 30 days in milliseconds
+        const maxAgeMs = int('MAX_LOG_DAYS', 30) * 24 * 60 * 60 * 1000;
         const now = Date.now();
 
         try {
             if (!fs.existsSync(this.logDir)) return;
 
-            const files = fs.readdirSync(this.logDir);
-            
-            files.forEach(file => {
+            for (const file of fs.readdirSync(this.logDir)) {
                 const filepath = path.join(this.logDir, file);
-                const stats = fs.statSync(filepath);
-                
-                if (now - stats.mtime.getTime() > maxAge) {
+                if (now - fs.statSync(filepath).mtime.getTime() > maxAgeMs) {
                     fs.unlinkSync(filepath);
-                    console.log(`🗑️ Cleaned up old log file: ${file}`);
+                    logger.info(`🗑️ Cleaned up old log file: ${file}`);
                 }
-            });
+            }
         } catch (error) {
-            console.error('❌ Error during log cleanup:', error.message);
+            logger.error(`❌ Error during log cleanup: ${error.message}`);
         }
     }
 
-    /**
-     * Get error statistics from log files
-     */
+    /** @returns {object|null} counts used by the /debuginfo command. */
     getErrorStats() {
         try {
             if (!fs.existsSync(this.logDir)) return null;
 
             const files = fs.readdirSync(this.logDir);
             const today = new Date().toISOString().split('T')[0];
-            
-            const stats = {
-                totalFiles: files.length,
-                todayFiles: files.filter(f => f.includes(today)).length,
-                errorTypes: {}
-            };
+            const errorTypes = {};
 
-            files.forEach(file => {
+            for (const file of files) {
                 const type = file.split('-')[0];
-                stats.errorTypes[type] = (stats.errorTypes[type] || 0) + 1;
-            });
+                errorTypes[type] = (errorTypes[type] || 0) + 1;
+            }
 
-            return stats;
+            return {
+                totalFiles: files.length,
+                todayFiles: files.filter((file) => file.includes(today)).length,
+                errorTypes,
+            };
         } catch (error) {
-            console.error('❌ Error getting stats:', error.message);
+            logger.error(`❌ Error getting stats: ${error.message}`);
             return null;
         }
     }
 }
 
-// Export singleton instance
-const errorHandler = new ErrorHandler();
-module.exports = errorHandler;
+module.exports = new ErrorHandler();

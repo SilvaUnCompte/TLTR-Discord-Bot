@@ -1,210 +1,152 @@
-const fs = require('fs');
+/**
+ * Per-guild configuration.
+ *
+ * Stored configs are always merged with DEFAULT_CONFIG on read, so adding a new
+ * default key never breaks a guild whose file predates it. Setting paths are
+ * validated against DEFAULT_CONFIG, so `/config set` cannot create arbitrary keys.
+ */
 const path = require('path');
+const { JsonStore } = require('../lib/jsonStore');
+const logger = require('../lib/logger');
 
 const CONFIG_DIR = path.join(__dirname, '..', 'configs');
-const CONFIG_FILE = path.join(CONFIG_DIR, 'guilds.json');
+const STORE_NAME = 'guilds';
 
-// Default configuration for new guilds
 const DEFAULT_CONFIG = {
-    // ai: {
-    //     model: process.env.GROQ_MODEL || 'meta-llama/llama-4-maverick-17b-128e-instruct',
-    //     defaultTone: 'normal',
-    //     maxContextMessages: 25
-    // },
-    // voice: {
-    //     bufferThreshold: parseInt(process.env.BUFFER_THRESHOLD) || 5000,
-    //     minSpeechDuration: parseInt(process.env.MIN_SPEECH_DURATION) || 800,
-    //     minVolumeThreshold: parseInt(process.env.MIN_VOLUME_THRESHOLD) || 500,
-    //     silenceDuration: parseInt(process.env.SILENCE_DURATION) || 1500,
-    //     noiseGateThreshold: parseInt(process.env.STT_NOISE_GATE_THRESHOLD) || 500
-    // },
     starboard: {
-        channel: ""
-    }
+        /** Channel ID the starred messages are mirrored to. Empty disables the feature. */
+        channel: '',
+        /** Number of stars required before a message is mirrored. */
+        threshold: 1,
+    },
 };
+
+/** Deep clone that is enough for a plain JSON config tree. */
+function clone(value) {
+    return JSON.parse(JSON.stringify(value));
+}
+
+/** Returns `defaults` with every key `stored` provides, recursively. */
+function mergeWithDefaults(defaults, stored) {
+    const result = clone(defaults);
+    if (!stored || typeof stored !== 'object') return result;
+
+    for (const [key, value] of Object.entries(stored)) {
+        if (!(key in result)) continue; // Drop unknown keys instead of propagating them.
+        const isPlainObject =
+            value &&
+            typeof value === 'object' &&
+            !Array.isArray(value) &&
+            typeof result[key] === 'object';
+        result[key] = isPlainObject ? mergeWithDefaults(result[key], value) : value;
+    }
+    return result;
+}
+
+/** Collects every leaf path of DEFAULT_CONFIG, e.g. "starboard.channel". */
+function collectPaths(node, prefix = '') {
+    const paths = [];
+    for (const [key, value] of Object.entries(node)) {
+        const current = prefix ? `${prefix}.${key}` : key;
+        if (value && typeof value === 'object' && !Array.isArray(value)) {
+            paths.push(...collectPaths(value, current));
+        } else {
+            paths.push(current);
+        }
+    }
+    return paths;
+}
+
+const VALID_PATHS = new Set(collectPaths(DEFAULT_CONFIG));
 
 class ConfigManager {
     constructor() {
+        this.store = new JsonStore(CONFIG_DIR, 'config');
         this.configs = new Map();
-        this.loadConfigs();
+        this.load();
     }
 
-    /**
-     * Load all guild configs from file
-     */
-    loadConfigs() {
-        try {
-            // Ensure config directory exists
-            if (!fs.existsSync(CONFIG_DIR)) {
-                fs.mkdirSync(CONFIG_DIR, { recursive: true });
-            }
+    load() {
+        this.store.checkWritable();
+        const stored = this.store.read(STORE_NAME);
 
-            // Load existing configs or create new file
-            if (fs.existsSync(CONFIG_FILE)) {
-                const data = fs.readFileSync(CONFIG_FILE, 'utf8');
-                const guildsData = JSON.parse(data);
-                
-                // Load into Map
-                Object.keys(guildsData).forEach(guildId => {
-                    this.configs.set(guildId, guildsData[guildId]);
-                });
-                
-                console.log(`✅ Loaded configs for ${this.configs.size} guilds`);
-            } else {
-                // Create empty config file
-                this.saveConfigs();
-                console.log('✅ Created new guild configs file');
-            }
-        } catch (error) {
-            console.error('❌ Error loading configs:', error);
-            this.configs = new Map();
+        for (const [guildId, guildConfig] of Object.entries(stored)) {
+            this.configs.set(guildId, mergeWithDefaults(DEFAULT_CONFIG, guildConfig));
         }
+        logger.info(`✅ Loaded configs for ${this.configs.size} guild(s)`);
+    }
+
+    save() {
+        return this.store.write(STORE_NAME, Object.fromEntries(this.configs));
     }
 
     /**
-     * Save all configs to file
-     */
-    saveConfigs() {
-        try {
-            const guildsData = {};
-            this.configs.forEach((config, guildId) => {
-                guildsData[guildId] = config;
-            });
-            
-            fs.writeFileSync(CONFIG_FILE, JSON.stringify(guildsData, null, 2), 'utf8');
-        } catch (error) {
-            console.error('❌ Error saving configs:', error);
-        }
-    }
-
-    /**
-     * Get config for a guild (creates default if doesn't exist)
-     * @param {string} guildId - Guild ID
-     * @returns {object} Guild config
+     * @param {string} guildId
+     * @returns {object} the guild config, created from the defaults if needed.
      */
     getGuildConfig(guildId) {
         if (!this.configs.has(guildId)) {
-            // Create default config for new guild
-            this.configs.set(guildId, JSON.parse(JSON.stringify(DEFAULT_CONFIG)));
-            this.saveConfigs();
-            console.log(`📝 Created default config for guild ${guildId}`);
+            this.configs.set(guildId, clone(DEFAULT_CONFIG));
+            this.save();
+            logger.info(`📝 Created default config for guild ${guildId}`);
         }
         return this.configs.get(guildId);
     }
 
     /**
-     * Get a specific setting value
-     * @param {string} guildId - Guild ID
-     * @param {string} path - Setting path (e.g., 'ai.model' or 'voice.silenceDuration')
-     * @returns {*} Setting value
+     * @param {string} guildId
+     * @param {string} settingPath Dotted path, e.g. "starboard.channel".
+     * @returns {*} the value, or undefined when the path does not exist.
      */
-    get(guildId, path) {
-        const config = this.getGuildConfig(guildId);
-        const keys = path.split('.');
-        let value = config;
-        
-        for (const key of keys) {
-            if (value && typeof value === 'object' && key in value) {
-                value = value[key];
-            } else {
-                return undefined;
-            }
+    get(guildId, settingPath) {
+        let value = this.getGuildConfig(guildId);
+        for (const key of settingPath.split('.')) {
+            if (!value || typeof value !== 'object' || !(key in value)) return undefined;
+            value = value[key];
         }
-        
         return value;
     }
 
     /**
-     * Set a specific setting value
-     * @param {string} guildId - Guild ID
-     * @param {string} path - Setting path (e.g., 'ai.model')
-     * @param {*} value - New value
-     * @returns {boolean} Success
+     * @param {string} guildId
+     * @param {string} settingPath Must be a known path of DEFAULT_CONFIG.
+     * @param {*} value
+     * @returns {{ success: boolean, reason?: string }}
      */
-    set(guildId, path, value) {
-        try {
-            const config = this.getGuildConfig(guildId);
-            const keys = path.split('.');
-            const lastKey = keys.pop();
-            let target = config;
-            
-            // Navigate to the parent object
-            for (const key of keys) {
-                if (!(key in target)) {
-                    target[key] = {};
-                }
-                target = target[key];
-            }
-            
-            // Set the value
-            target[lastKey] = value;
-            
-            // Save changes
-            this.saveConfigs();
-            console.log(`✅ Updated ${path} for guild ${guildId}`);
-            return true;
-        } catch (error) {
-            console.error(`❌ Error setting ${path}:`, error);
-            return false;
+    set(guildId, settingPath, value) {
+        if (typeof settingPath !== 'string' || !VALID_PATHS.has(settingPath)) {
+            return { success: false, reason: `Unknown setting \`${settingPath}\`` };
         }
+
+        const config = this.getGuildConfig(guildId);
+        const keys = settingPath.split('.');
+        const lastKey = keys.pop();
+
+        let target = config;
+        for (const key of keys) target = target[key];
+        target[lastKey] = value;
+
+        if (!this.save()) {
+            return { success: false, reason: 'The configuration could not be written to disk' };
+        }
+        logger.info(`✅ Updated ${settingPath} for guild ${guildId}`);
+        return { success: true };
     }
 
-    /**
-     * Reset guild config to defaults
-     * @param {string} guildId - Guild ID
-     * @returns {boolean} Success
-     */
+    /** @returns {{ success: boolean, reason?: string }} */
     reset(guildId) {
-        try {
-            this.configs.set(guildId, JSON.parse(JSON.stringify(DEFAULT_CONFIG)));
-            this.saveConfigs();
-            console.log(`🔄 Reset config for guild ${guildId}`);
-            return true;
-        } catch (error) {
-            console.error(`❌ Error resetting config:`, error);
-            return false;
+        this.configs.set(guildId, clone(DEFAULT_CONFIG));
+        if (!this.save()) {
+            return { success: false, reason: 'The configuration could not be written to disk' };
         }
+        logger.info(`🔄 Reset config for guild ${guildId}`);
+        return { success: true };
     }
 
-    /**
-     * Delete guild config
-     * @param {string} guildId - Guild ID
-     * @returns {boolean} Success
-     */
-    delete(guildId) {
-        try {
-            this.configs.delete(guildId);
-            this.saveConfigs();
-            console.log(`🗑️ Deleted config for guild ${guildId}`);
-            return true;
-        } catch (error) {
-            console.error(`❌ Error deleting config:`, error);
-            return false;
-        }
-    }
-
-    /**
-     * Get all available settings paths
-     * @returns {string[]} Array of setting paths
-     */
+    /** @returns {string[]} every settable path. */
     getAvailableSettings() {
-        const paths = [];
-        
-        const traverse = (obj, prefix = '') => {
-            for (const key in obj) {
-                const path = prefix ? `${prefix}.${key}` : key;
-                if (typeof obj[key] === 'object' && !Array.isArray(obj[key])) {
-                    traverse(obj[key], path);
-                } else {
-                    paths.push(path);
-                }
-            }
-        };
-        
-        traverse(DEFAULT_CONFIG);
-        return paths;
+        return [...VALID_PATHS];
     }
 }
 
-// Export singleton instance
 module.exports = new ConfigManager();

@@ -1,50 +1,55 @@
 /**
- * Optimize audio buffer for faster processing
+ * Prepares the captured PCM for the speech-to-text request: stereo to mono
+ * (halves the payload) and a noise gate on the quietest samples.
+ */
+const { int } = require('../lib/env');
+
+const BYTES_PER_SAMPLE = 2;
+
+/**
+ * @param {Buffer} audioBuffer Interleaved stereo 16-bit PCM.
+ * @returns {Buffer} mono 16-bit PCM.
  */
 function optimizeAudioBuffer(audioBuffer) {
-    // Convert to mono if stereo (reduces size by ~50%)
-    const monoBuffer = convertToMono(audioBuffer);
-    
-    // Apply noise gate to reduce background noise
-    const cleanedBuffer = applyNoiseGate(monoBuffer);
-    
-    return cleanedBuffer;
+    return applyNoiseGate(convertToMono(audioBuffer));
 }
 
 /**
- * Convert stereo audio to mono
+ * Averages the two channels of an interleaved stereo buffer.
+ * @param {Buffer} buffer
+ * @returns {Buffer}
  */
 function convertToMono(buffer) {
-    if (buffer.length < 4) return buffer;
-    
-    const monoBuffer = Buffer.alloc(buffer.length / 2);
-    
-    for (let i = 0; i < buffer.length; i += 4) {
-        // Average left and right channels (16-bit samples)
-        const left = buffer.readInt16LE(i);
-        const right = buffer.readInt16LE(i + 2);
-        const mono = Math.round((left + right) / 2);
-        monoBuffer.writeInt16LE(mono, i / 2);
+    const frameSize = BYTES_PER_SAMPLE * 2;
+    const frames = Math.floor(buffer.length / frameSize);
+    if (frames === 0) return buffer;
+
+    const mono = Buffer.alloc(frames * BYTES_PER_SAMPLE);
+    for (let frame = 0; frame < frames; frame += 1) {
+        const offset = frame * frameSize;
+        const left = buffer.readInt16LE(offset);
+        const right = buffer.readInt16LE(offset + BYTES_PER_SAMPLE);
+        mono.writeInt16LE(Math.round((left + right) / 2), frame * BYTES_PER_SAMPLE);
     }
-    
-    return monoBuffer;
+    return mono;
 }
 
 /**
- * Apply simple noise gate
+ * Zeroes samples below the configured amplitude, which removes most of the
+ * constant background hiss before the audio is sent for transcription.
+ * @param {Buffer} buffer
+ * @returns {Buffer}
  */
 function applyNoiseGate(buffer) {
-    const threshold = parseInt(process.env.STT_NOISE_GATE_THRESHOLD) || 500;
-    const cleanedBuffer = Buffer.from(buffer);
-    
-    for (let i = 0; i < buffer.length; i += 2) {
-        const sample = buffer.readInt16LE(i);
-        if (Math.abs(sample) < threshold) {
-            cleanedBuffer.writeInt16LE(0, i); // Silence low-amplitude noise
+    const threshold = int('STT_NOISE_GATE_THRESHOLD', 500);
+    const gated = Buffer.from(buffer);
+
+    for (let offset = 0; offset + 1 < buffer.length; offset += BYTES_PER_SAMPLE) {
+        if (Math.abs(buffer.readInt16LE(offset)) < threshold) {
+            gated.writeInt16LE(0, offset);
         }
     }
-    
-    return cleanedBuffer;
+    return gated;
 }
 
-module.exports = { optimizeAudioBuffer };
+module.exports = { optimizeAudioBuffer, convertToMono, applyNoiseGate };
