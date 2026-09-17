@@ -9,10 +9,26 @@
 const { Groq } = require('groq-sdk');
 const errorHandler = require('../utils/errorHandler');
 const { str } = require('../lib/env');
+const { withFallback } = require('../lib/fallback');
 
 const DEFAULT_MODEL = 'meta-llama/llama-4-maverick-17b-128e-instruct';
 const TRANSCRIPT_OPEN = '<<<CONVERSATION>>>';
 const TRANSCRIPT_CLOSE = '<<<END_CONVERSATION>>>';
+
+// 429: rate or token limit reached, 413: request above the tokens-per-minute limit,
+// 498: flex tier out of capacity.
+const QUOTA_STATUSES = [429, 413, 498];
+const QUOTA_ERROR = 'RateLimitError';
+
+const isQuotaError = (error) => QUOTA_STATUSES.includes(error.status);
+
+/** Main model first, then the optional comma-separated fallbacks. */
+function getModels() {
+    const fallbacks = str('GROQ_FALLBACK_MODELS', '')
+        .split(',')
+        .map((model) => model.trim());
+    return [str('GROQ_MODEL', DEFAULT_MODEL), ...fallbacks].filter(Boolean);
+}
 
 let client = null;
 
@@ -31,20 +47,25 @@ function getClient() {
  * @returns {Promise<string>} the assistant answer.
  */
 async function sendLLMRequest(messages, maxTokens = 1024) {
-    const model = str('GROQ_MODEL', DEFAULT_MODEL);
+    const models = getModels();
 
     try {
-        const completion = await getClient().chat.completions.create({
-            messages: messages.map((message) => message.toObject()),
-            model,
-            temperature: 0.7,
-            max_tokens: maxTokens,
-            stream: false,
-        });
+        const completion = await withFallback(
+            models,
+            (model) =>
+                getClient().chat.completions.create({
+                    messages: messages.map((message) => message.toObject()),
+                    model,
+                    temperature: 0.7,
+                    max_tokens: maxTokens,
+                    stream: false,
+                }),
+            isQuotaError
+        );
 
         return completion.choices[0]?.message?.content ?? '';
     } catch (error) {
-        throw describeGroqError(error, { messagesCount: messages.length, maxTokens, model });
+        throw describeGroqError(error, { messagesCount: messages.length, maxTokens, models });
     }
 }
 
@@ -57,8 +78,8 @@ function describeGroqError(error, context) {
     };
 
     let result;
-    if (error.status === 429) {
-        result = named('RateLimitError', 'Groq API rate limit exceeded');
+    if (isQuotaError(error)) {
+        result = named(QUOTA_ERROR, `Groq API quota exceeded on every model (${error.status})`);
     } else if (error.status === 401 || error.status === 403) {
         result = named('AuthenticationError', 'Groq API authentication failed');
     } else if (error.status >= 500) {
@@ -131,6 +152,7 @@ module.exports = {
     sendLLMRequest,
     buildTranscript,
     GroqMessage,
+    QUOTA_ERROR,
     TRANSCRIPT_OPEN,
     TRANSCRIPT_CLOSE,
 };

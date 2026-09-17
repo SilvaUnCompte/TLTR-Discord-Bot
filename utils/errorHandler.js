@@ -137,7 +137,7 @@ class ErrorHandler {
             ValidationError: '📝 The provided data is not valid.',
             AuthenticationError: '🔐 Authentication problem with an external service.',
             NetworkError: '🌐 Network connection problem.',
-            RateLimitError: '🚫 Too many requests. Please wait before trying again.',
+            RateLimitError: '😴 Robert \u00eatre fatigu\u00e9, repasse plus tard...',
             PermissionError: '🚫 The bot lacks the permissions required for this action.',
         };
         return messages[error.name] || '❌ An error occurred while executing this command.';
